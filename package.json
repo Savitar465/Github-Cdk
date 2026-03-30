@@ -8,7 +8,15 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "test:coverage": "jest --coverage",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "synth:dev": "cdk synth --context env=dev",
+    "synth:prod": "cdk synth --context env=prod",
+    "diff:dev": "cdk diff --context env=dev",
+    "diff:prod": "cdk diff --context env=prod",
+    "deploy:dev": "cdk deploy --context env=dev --require-approval never",
+    "deploy:prod": "cdk deploy --context env=prod"
   },
   "devDependencies": {
     "@types/jest": "^30",
@@ -20,7 +28,9 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.244.0",
-    "constructs": "^10.5.0"
+    "@aws-cdk/lambda-layer-kubectl-v29": "^2.1.1",
+    "aws-cdk-lib": "^2.245.0",
+    "constructs": "^10.5.0",
+    "dotenv": "^16.6.1"
   }
 }

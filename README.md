@@ -1,14 +1,41 @@
-# Welcome to your CDK TypeScript project
+# CDK Platform Stack
 
-This is a blank project for CDK development with TypeScript.
+This CDK app provisions a Keycloak platform on AWS with:
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+- Amazon EKS cluster and managed node group
+- Keycloak on Kubernetes manifests
+- Amazon RDS PostgreSQL database for Keycloak
 
-## Useful commands
+## Architecture highlights
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+- Keycloak is configured to use external PostgreSQL (RDS), not in-cluster Postgres.
+- All runtime and deployment values are loaded from `.env`.
+
+## Configuration
+
+Copy `.env.example` to `.env` and set values for your environment:
+
+```bash
+cp .env.example .env
+```
+
+Required secrets:
+
+- `KEYCLOAK_ADMIN_PASSWORD`
+- `KEYCLOAK_DB_PASSWORD`
+
+## Commands
+
+- `npm run build` compile TypeScript
+- `npm run test` run unit tests
+- `npx cdk synth` synthesize CloudFormation template
+- `npx cdk deploy` deploy the stack
+
+## Notes
+
+- This stack uses `RemovalPolicy.DESTROY` for easier development teardown.
+- This sample unwraps Secrets Manager values into Kubernetes manifests/Helm values
+  so `cdk synth` works end-to-end; use External Secrets or a runtime secret fetch
+  pattern for production to avoid storing plaintext values in templates.
+- Before production use, switch data resources (S3/RDS) to `RETAIN`, harden networking,
+  and expose services using an ingress strategy that matches your security model.
