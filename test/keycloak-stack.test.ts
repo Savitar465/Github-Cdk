@@ -1,4 +1,4 @@
-import * as cdk from 'aws-cdk-lib/core';
+import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { KeycloakStack } from '../lib/stacks';
 import { getEnvironmentConfig } from '../config/app-config';
@@ -23,6 +23,7 @@ describe('KeycloakStack – dev environment', () => {
       KEYCLOAK_DB_NAME: 'keycloak',
       KEYCLOAK_REPLICAS: '1',
       RDS_MULTI_AZ: 'false',
+      RDS_ENGINE_VERSION: '16.4',
     };
 
     const app = new cdk.App();
@@ -55,7 +56,7 @@ describe('KeycloakStack – dev environment', () => {
     template.hasResourceProperties('AWS::RDS::DBInstance', {
       DBName:        'keycloak',
       Engine:        'postgres',
-      EngineVersion: Match.stringLikeRegexp('^15'),
+      EngineVersion: Match.stringLikeRegexp('^16'),
     });
   });
 

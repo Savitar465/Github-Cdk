@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import * as cdk from 'aws-cdk-lib/core';
-import { KeycloakStack } from '../lib/stacks';
+import * as cdk from 'aws-cdk-lib';
+
 import { getEnvironmentConfig } from '../config/app-config';
+import { KeycloakStack } from '../lib/stacks';
 
 const app = new cdk.App();
 const config = getEnvironmentConfig();

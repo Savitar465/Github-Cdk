@@ -169,8 +169,8 @@ export class KeycloakManifests extends Construct {
                       failureThreshold: 3,
                     },
                     resources: {
-                      limits:   { cpu: '2000m', memory: '2000Mi' },
-                      requests: { cpu: '500m',  memory: '1700Mi' },
+                      limits:   { cpu: '1000m', memory: '1500Mi' },
+                      requests: { cpu: '250m',  memory: '768Mi' },
                     },
                   },
                 ],

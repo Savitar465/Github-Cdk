@@ -1,11 +1,9 @@
-import * as cdk from 'aws-cdk-lib/core';
+import * as cdk from 'aws-cdk-lib';
 import * as eks from 'aws-cdk-lib/aws-eks';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import { KubectlV29Layer } from '@aws-cdk/lambda-layer-kubectl-v29';
 import { Construct } from 'constructs';
 
-import {KeycloakDatabase, KeycloakManifests, KubeVpc} from '../constructs';
 import { EnvironmentConfig } from '../../config/app-config';
+import { GithubDatabase, GithubVpc, KeycloakManifests, KubeCluster } from '../constructs';
 
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
@@ -14,8 +12,8 @@ export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
  *
  * This stack is intentionally thin – it only wires together the three
  * reusable constructs:
- *   - {@link KubeVpc} → VPC with public + private subnets
- *   - {@link KeycloakDatabase} → RDS PostgreSQL 15
+ *   - {@link GithubVpc} → VPC with public + private subnets
+ *   - {@link GithubDatabase} → RDS PostgreSQL
  *   - {@link KeycloakManifests} → Kubernetes resources on EKS
  *
  * All configuration is driven by {@link EnvironmentConfig}, which keeps
@@ -29,31 +27,43 @@ export class KeycloakStack extends cdk.Stack {
     super(scope, id, props);
 
     // ── Network ───────────────────────────────────────────────────────────────
-    const network = new KubeVpc(this, 'Network', {
+    const network = new GithubVpc(this, 'Network', {
       maxAzs: props.vpcMaxAzs,
       natGateways: props.vpcNatGateways,
     });
 
     // ── EKS Cluster ───────────────────────────────────────────────────────────
-    this.cluster = new eks.Cluster(this, 'Cluster', {
-      clusterName: props.clusterName,
+    const kubeCluster = new KubeCluster(this, 'KubeCluster', {
       vpc: network.vpc,
-      vpcSubnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }],
-      version: eks.KubernetesVersion.V1_29,
-      kubectlLayer: new KubectlV29Layer(this, 'KubectlLayer'),
-      defaultCapacity: 2,
-      defaultCapacityInstance: ec2.InstanceType.of(
-        ec2.InstanceClass.T3,
-        ec2.InstanceSize.MEDIUM,
-      ),
+      clusterName: props.clusterName,
+      nodeInstanceType: props.eksNodeInstanceType,
+      desiredSize: props.eksNodeDesiredSize,
+      minSize: props.eksNodeMinSize,
+      maxSize: props.eksNodeMaxSize,
     });
+    this.cluster = kubeCluster.cluster;
 
     // ── Database ──────────────────────────────────────────────────────────────
-    const database = new KeycloakDatabase(this, 'Database', {
+    const database = new GithubDatabase(this, 'Database', {
       vpc: network.vpc,
       dbPassword: props.dbPassword,
       dbName: props.dbName,
       multiAz: props.rdsMultiAz,
+      instanceType: props.rdsInstanceType,
+      allocatedStorageGb: props.rdsAllocatedStorageGb,
+      engineVersion: props.rdsEngineVersion,
+    });
+
+    // ── Keycloak on Kubernetes ────────────────────────────────────────────────
+    const keycloak = new KeycloakManifests(this, 'KeycloakManifests', {
+      cluster: this.cluster,
+      keycloakHostname: props.keycloakHostname,
+      keycloakAdminUser: props.keycloakAdminUser,
+      keycloakAdminPassword: props.keycloakAdminPassword,
+      dbHost: database.endpointAddress,
+      dbName: props.dbName,
+      dbPassword: props.dbPassword,
+      replicas: props.keycloakReplicas,
     });
 
     // ── CloudFormation Outputs ────────────────────────────────────────────────

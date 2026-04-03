@@ -24,6 +24,12 @@ Required secrets:
 - `KEYCLOAK_ADMIN_PASSWORD`
 - `KEYCLOAK_DB_PASSWORD`
 
+Main sizing variables (all read from `.env`):
+
+- `EKS_NODE_INSTANCE_TYPE`, `EKS_NODE_DESIRED_SIZE`, `EKS_NODE_MIN_SIZE`, `EKS_NODE_MAX_SIZE`
+- `RDS_INSTANCE_TYPE`, `RDS_ALLOCATED_STORAGE_GB`, `RDS_ENGINE_VERSION`, `RDS_MULTI_AZ`
+- `VPC_NAT_GATEWAYS` (default `0` to avoid NAT Gateway hourly charges)
+
 ## Commands
 
 - `npm run build` compile TypeScript
@@ -34,6 +40,8 @@ Required secrets:
 ## Notes
 
 - This stack uses `RemovalPolicy.DESTROY` for easier development teardown.
+- `db.t3.micro` + single-AZ + 20GiB are set as dev/free-tier-friendly defaults for RDS PostgreSQL.
+- EKS control plane may still incur hourly charges depending on your account/free-tier eligibility.
 - This sample unwraps Secrets Manager values into Kubernetes manifests/Helm values
   so `cdk synth` works end-to-end; use External Secrets or a runtime secret fetch
   pattern for production to avoid storing plaintext values in templates.

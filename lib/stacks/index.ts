@@ -1,2 +1,2 @@
-export { KeycloakStack, KeycloakStackProps } from './keycloak-stack';
+export * from './keycloak-stack';
 

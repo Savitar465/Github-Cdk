@@ -1,2 +1,2 @@
-export { KubeVpc, KeycloakVpcProps } from './vpc-construct';
+export * from './vpc-construct';
 

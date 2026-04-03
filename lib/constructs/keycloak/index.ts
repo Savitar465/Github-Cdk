@@ -1,3 +1,2 @@
-export { KeycloakDatabase, KeycloakDatabaseProps } from './keycloak-database';
-export { KeycloakManifests, KeycloakManifestsProps } from './keycloak-manifests';
+export * from './keycloak-manifests';
 

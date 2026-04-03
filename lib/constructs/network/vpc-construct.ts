@@ -12,7 +12,7 @@ export interface KeycloakVpcProps {
  * Reusable VPC construct with public + private subnets sized for the
  * Keycloak workload (EKS nodes and RDS in private subnets).
  */
-export class KubeVpc extends Construct {
+export class GithubVpc extends Construct {
   public readonly vpc: ec2.Vpc;
 
   constructor(scope: Construct, id: string, props: KeycloakVpcProps = {}) {
@@ -20,7 +20,7 @@ export class KubeVpc extends Construct {
 
     this.vpc = new ec2.Vpc(this, 'Vpc', {
       maxAzs: props.maxAzs ?? 2,
-      natGateways: props.natGateways ?? 1,
+      natGateways: props.natGateways ?? 0,
       subnetConfiguration: [
         {
           name: 'Public',
@@ -28,8 +28,8 @@ export class KubeVpc extends Construct {
           cidrMask: 24,
         },
         {
-          name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          name: 'PrivateIsolated',
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
       ],
