@@ -32,17 +32,6 @@ export class KeycloakStack extends cdk.Stack {
       natGateways: props.vpcNatGateways,
     });
 
-    // ── EKS Cluster ───────────────────────────────────────────────────────────
-    const kubeCluster = new KubeCluster(this, 'KubeCluster', {
-      vpc: network.vpc,
-      clusterName: props.clusterName,
-      nodeInstanceType: props.eksNodeInstanceType,
-      desiredSize: props.eksNodeDesiredSize,
-      minSize: props.eksNodeMinSize,
-      maxSize: props.eksNodeMaxSize,
-    });
-    this.cluster = kubeCluster.cluster;
-
     // ── Database ──────────────────────────────────────────────────────────────
     const database = new GithubDatabase(this, 'Database', {
       vpc: network.vpc,
@@ -54,8 +43,19 @@ export class KeycloakStack extends cdk.Stack {
       engineVersion: props.rdsEngineVersion,
     });
 
+    // ── EKS Cluster ───────────────────────────────────────────────────────────
+    const kubeCluster = new KubeCluster(this, 'KubeCluster', {
+      vpc: network.vpc,
+      clusterName: props.clusterName,
+      nodeInstanceType: props.eksNodeInstanceType,
+      desiredSize: props.eksNodeDesiredSize,
+      minSize: props.eksNodeMinSize,
+      maxSize: props.eksNodeMaxSize,
+    });
+    this.cluster = kubeCluster.cluster;
+
     // ── Keycloak on Kubernetes ────────────────────────────────────────────────
-    const keycloak = new KeycloakManifests(this, 'KeycloakManifests', {
+    new KeycloakManifests(this, 'KeycloakManifests', {
       cluster: this.cluster,
       keycloakHostname: props.keycloakHostname,
       keycloakAdminUser: props.keycloakAdminUser,
@@ -65,6 +65,7 @@ export class KeycloakStack extends cdk.Stack {
       dbPassword: props.dbPassword,
       replicas: props.keycloakReplicas,
     });
+
 
     // ── CloudFormation Outputs ────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ClusterName', {
@@ -84,7 +85,6 @@ export class KeycloakStack extends cdk.Stack {
       description: 'Keycloak base URL',
       exportName: `${this.stackName}-KeycloakUrl`,
     });
+
   }
 }
-
-

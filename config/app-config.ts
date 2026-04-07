@@ -130,5 +130,3 @@ export function getEnvironmentConfig(): AppConfig {
     rdsEngineVersion: getOptionalString('RDS_ENGINE_VERSION') ?? '16.4',
   };
 }
-
-

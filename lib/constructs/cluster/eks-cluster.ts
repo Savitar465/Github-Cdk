@@ -24,7 +24,7 @@ export class KubeCluster extends Construct {
     this.cluster = new eks.Cluster(this, 'Cluster', {
       clusterName: props.clusterName,
       vpc: props.vpc,
-      version: eks.KubernetesVersion.V1_29,
+      version: eks.KubernetesVersion.V1_35,
       kubectlLayer: new KubectlV29Layer(this, 'KubectlLayer'),
       defaultCapacity: 0,
       vpcSubnets: [{ subnetType: ec2.SubnetType.PUBLIC }],
@@ -37,7 +37,7 @@ export class KubeCluster extends Construct {
       maxSize: props.maxSize,
       subnets: { subnetType: ec2.SubnetType.PUBLIC },
       instanceTypes: [new ec2.InstanceType(props.nodeInstanceType)],
-      amiType: eks.NodegroupAmiType.AL2_X86_64,
+      amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD, // <- cambio clave
       diskSize: 20,
     });
   }

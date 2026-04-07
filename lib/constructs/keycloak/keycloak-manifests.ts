@@ -30,7 +30,8 @@ export interface KeycloakManifestsProps {
  *  2. Service         – ClusterIP on port 8080
  *  3. Service         – Headless discovery service for ISPN clustering
  *  4. StatefulSet     – `quay.io/keycloak/keycloak:26.3.3`
- *  5. Ingress         – nginx, TLS via `keycloak-tls-cert` secret
+ *
+ * Note: Ingress is NOT created here. Instead, use Cloudflare Tunnel or ALB.
  *
  * Deployment ordering is enforced via CDK construct dependencies.
  */

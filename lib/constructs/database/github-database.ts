@@ -38,17 +38,6 @@ export class GithubDatabase extends Construct {
   /** Security group attached to the RDS instance */
   public readonly securityGroup: ec2.SecurityGroup;
 
-  private static resolvePostgresVersion(version: string): rds.PostgresEngineVersion {
-    switch (version) {
-      case '15.10':
-        return rds.PostgresEngineVersion.VER_15_10;
-      case '17.2':
-        return rds.PostgresEngineVersion.VER_17_2;
-      case '16.4':
-      default:
-        return rds.PostgresEngineVersion.VER_16_4;
-    }
-  }
 
   constructor(scope: Construct, id: string, props: GitHubDatabaseProps) {
     super(scope, id);
@@ -62,16 +51,14 @@ export class GithubDatabase extends Construct {
     this.securityGroup.addIngressRule(
       ec2.Peer.ipv4(props.vpc.vpcCidrBlock),
       ec2.Port.tcp(5432),
-      'EKS → Postgres',
+      'EKS to Postgres',
     );
 
     const instance = new rds.DatabaseInstance(this, 'Instance', {
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.securityGroup],
-      engine: rds.DatabaseInstanceEngine.postgres({
-        version: GithubDatabase.resolvePostgresVersion(props.engineVersion),
-      }),
+      engine: rds.DatabaseInstanceEngine.POSTGRES,
       credentials: rds.Credentials.fromPassword(
         'postgres',
         cdk.SecretValue.unsafePlainText(props.dbPassword),
@@ -79,7 +66,7 @@ export class GithubDatabase extends Construct {
       databaseName: props.dbName,
       instanceType: new ec2.InstanceType(props.instanceType),
       allocatedStorage: props.allocatedStorageGb,
-      storageEncrypted: true,
+      storageEncrypted: false,
       multiAz: props.multiAz ?? false,
       backupRetention: cdk.Duration.days(0),
       deletionProtection: false,
