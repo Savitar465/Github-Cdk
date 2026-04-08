@@ -1,4 +1,5 @@
 import { config as loadDotEnv } from 'dotenv';
+import { readFileAsBase64 } from './tls-encoding';
 
 // Load .env once at startup so every consumer of this module gets the same values.
 loadDotEnv();
@@ -29,10 +30,22 @@ export interface EnvironmentConfig {
 
   /** Public hostname exposed via the Keycloak Ingress */
   readonly keycloakHostname: string;
+  /** How Keycloak is exposed outside the cluster */
+  readonly keycloakExposure: 'ingress' | 'cloudflare-tunnel';
   /** Keycloak bootstrap admin username */
   readonly keycloakAdminUser: string;
   /** Keycloak bootstrap admin password ⚠️ use Secrets Manager in production */
   readonly keycloakAdminPassword: string;
+  /** Cloudflare tunnel token (required when keycloakExposure=cloudflare-tunnel) */
+  readonly cloudflareTunnelToken?: string;
+  /** Optional base64-encoded mkcert certificate PEM (used to create keycloak-tls-cert) */
+  readonly mkcertTlsCertB64?: string;
+  /** Optional base64-encoded mkcert private key PEM (used to create keycloak-tls-cert) */
+  readonly mkcertTlsKeyB64?: string;
+  /** Optional file path to mkcert certificate PEM; converted to base64 at startup */
+  readonly mkcertTlsCertPath?: string;
+  /** Optional file path to mkcert private key PEM; converted to base64 at startup */
+  readonly mkcertTlsKeyPath?: string;
 
   /** RDS master password for the `postgres` user ⚠️ use Secrets Manager in production */
   readonly dbPassword: string;
@@ -107,6 +120,27 @@ function parseBoolean(name: string, defaultValue: boolean): boolean {
  * Returns the validated configuration read from `.env`/process env.
  */
 export function getEnvironmentConfig(): AppConfig {
+  const keycloakExposureRaw = getOptionalString('KEYCLOAK_EXPOSURE') ?? 'ingress';
+  if (keycloakExposureRaw !== 'ingress' && keycloakExposureRaw !== 'cloudflare-tunnel') {
+    throw new Error('KEYCLOAK_EXPOSURE must be either ingress or cloudflare-tunnel.');
+  }
+
+  const cloudflareTunnelToken = getOptionalString('CLOUDFLARE_TUNNEL_TOKEN');
+  const mkcertTlsCertPath = getOptionalString('MKCERT_TLS_CERT_PATH');
+  const mkcertTlsKeyPath = getOptionalString('MKCERT_TLS_KEY_PATH');
+  const mkcertTlsCertB64 = getOptionalString('MKCERT_TLS_CERT_B64')
+    ?? (mkcertTlsCertPath ? readFileAsBase64(mkcertTlsCertPath) : undefined);
+  const mkcertTlsKeyB64 = getOptionalString('MKCERT_TLS_KEY_B64')
+    ?? (mkcertTlsKeyPath ? readFileAsBase64(mkcertTlsKeyPath) : undefined);
+
+  if (keycloakExposureRaw === 'cloudflare-tunnel' && !cloudflareTunnelToken) {
+    throw new Error('CLOUDFLARE_TUNNEL_TOKEN is required when KEYCLOAK_EXPOSURE=cloudflare-tunnel.');
+  }
+
+  if ((mkcertTlsCertB64 && !mkcertTlsKeyB64) || (!mkcertTlsCertB64 && mkcertTlsKeyB64)) {
+    throw new Error('MKCERT_TLS_CERT_B64 and MKCERT_TLS_KEY_B64 must both be provided together.');
+  }
+
   return {
     stackName: getOptionalString('CDK_STACK_NAME') ?? 'KeycloakStack',
     account: getOptionalString('AWS_ACCOUNT_ID'),
@@ -119,8 +153,14 @@ export function getEnvironmentConfig(): AppConfig {
     eksNodeMinSize: parseNumber('EKS_NODE_MIN_SIZE', 1),
     eksNodeMaxSize: parseNumber('EKS_NODE_MAX_SIZE', 1),
     keycloakHostname: getRequiredString('KEYCLOAK_HOSTNAME'),
+    keycloakExposure: keycloakExposureRaw,
     keycloakAdminUser: getOptionalString('KEYCLOAK_ADMIN_USER') ?? 'admin',
     keycloakAdminPassword: getRequiredString('KEYCLOAK_ADMIN_PASSWORD'),
+    cloudflareTunnelToken,
+    mkcertTlsCertB64,
+    mkcertTlsKeyB64,
+    mkcertTlsCertPath,
+    mkcertTlsKeyPath,
     dbPassword: getRequiredString('KEYCLOAK_DB_PASSWORD'),
     dbName: getOptionalString('KEYCLOAK_DB_NAME') ?? 'keycloak',
     keycloakReplicas: parseNumber('KEYCLOAK_REPLICAS', 1),

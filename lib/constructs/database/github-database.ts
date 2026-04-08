@@ -42,6 +42,13 @@ export class GithubDatabase extends Construct {
   constructor(scope: Construct, id: string, props: GitHubDatabaseProps) {
     super(scope, id);
 
+    const engineVersionMap: Record<string, rds.PostgresEngineVersion> = {
+      '15.10': rds.PostgresEngineVersion.VER_15_10,
+      '16.4': rds.PostgresEngineVersion.VER_16_4,
+      '17.2': rds.PostgresEngineVersion.VER_17_2,
+    };
+    const selectedEngineVersion = engineVersionMap[props.engineVersion] ?? rds.PostgresEngineVersion.VER_16_4;
+
     // Security group – allow EKS nodes (and any VPC traffic) to reach postgres
     this.securityGroup = new ec2.SecurityGroup(this, 'DbSg', {
       vpc: props.vpc,
@@ -58,7 +65,7 @@ export class GithubDatabase extends Construct {
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.securityGroup],
-      engine: rds.DatabaseInstanceEngine.POSTGRES,
+      engine: rds.DatabaseInstanceEngine.postgres({ version: selectedEngineVersion }),
       credentials: rds.Credentials.fromPassword(
         'postgres',
         cdk.SecretValue.unsafePlainText(props.dbPassword),
@@ -66,7 +73,7 @@ export class GithubDatabase extends Construct {
       databaseName: props.dbName,
       instanceType: new ec2.InstanceType(props.instanceType),
       allocatedStorage: props.allocatedStorageGb,
-      storageEncrypted: false,
+      storageEncrypted: true,
       multiAz: props.multiAz ?? false,
       backupRetention: cdk.Duration.days(0),
       deletionProtection: false,

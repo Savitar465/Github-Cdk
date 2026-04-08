@@ -16,7 +16,8 @@
     "diff:dev": "cdk diff --context env=dev",
     "diff:prod": "cdk diff --context env=prod",
     "deploy:dev": "cdk deploy --context env=dev --require-approval never",
-    "deploy:prod": "cdk deploy --context env=prod"
+    "deploy:prod": "cdk deploy --context env=prod",
+    "tls:encode": "ts-node scripts/encode-tls.ts"
   },
   "devDependencies": {
     "@types/jest": "^30",

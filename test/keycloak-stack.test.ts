@@ -17,6 +17,7 @@ describe('KeycloakStack – dev environment', () => {
       VPC_MAX_AZS: '2',
       VPC_NAT_GATEWAYS: '1',
       KEYCLOAK_HOSTNAME: 'keycloak-dev.savi.io',
+      KEYCLOAK_EXPOSURE: 'ingress',
       KEYCLOAK_ADMIN_USER: 'admin',
       KEYCLOAK_ADMIN_PASSWORD: 'admin-dev',
       KEYCLOAK_DB_PASSWORD: 'Space465Dev',

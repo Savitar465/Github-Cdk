@@ -58,8 +58,12 @@ export class KeycloakStack extends cdk.Stack {
     new KeycloakManifests(this, 'KeycloakManifests', {
       cluster: this.cluster,
       keycloakHostname: props.keycloakHostname,
+      exposure: props.keycloakExposure,
       keycloakAdminUser: props.keycloakAdminUser,
       keycloakAdminPassword: props.keycloakAdminPassword,
+      cloudflareTunnelToken: props.cloudflareTunnelToken,
+      mkcertTlsCertB64: props.mkcertTlsCertB64,
+      mkcertTlsKeyB64: props.mkcertTlsKeyB64,
       dbHost: database.endpointAddress,
       dbName: props.dbName,
       dbPassword: props.dbPassword,

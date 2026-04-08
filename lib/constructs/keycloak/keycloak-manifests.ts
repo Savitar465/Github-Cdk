@@ -6,10 +6,18 @@ export interface KeycloakManifestsProps {
   readonly cluster: eks.ICluster;
   /** Public hostname used in the Ingress rule and TLS certificate */
   readonly keycloakHostname: string;
+  /** How to expose Keycloak externally */
+  readonly exposure: 'ingress' | 'cloudflare-tunnel';
   /** Keycloak bootstrap admin username */
   readonly keycloakAdminUser: string;
   /** Keycloak bootstrap admin password */
   readonly keycloakAdminPassword: string;
+  /** Cloudflare tunnel token (required when exposure=cloudflare-tunnel) */
+  readonly cloudflareTunnelToken?: string;
+  /** Optional base64-encoded mkcert cert PEM for keycloak-tls-cert */
+  readonly mkcertTlsCertB64?: string;
+  /** Optional base64-encoded mkcert key PEM for keycloak-tls-cert */
+  readonly mkcertTlsKeyB64?: string;
   /** RDS endpoint address (CloudFormation token is accepted) */
   readonly dbHost: string;
   /** Database name used by Keycloak */
@@ -31,7 +39,9 @@ export interface KeycloakManifestsProps {
  *  3. Service         – Headless discovery service for ISPN clustering
  *  4. StatefulSet     – `quay.io/keycloak/keycloak:26.3.3`
  *
- * Note: Ingress is NOT created here. Instead, use Cloudflare Tunnel or ALB.
+ * Exposure strategy:
+ *  - `ingress`: creates an Ingress and optional TLS secret
+ *  - `cloudflare-tunnel`: deploys cloudflared with a tunnel token
  *
  * Deployment ordering is enforced via CDK construct dependencies.
  */
@@ -42,13 +52,21 @@ export class KeycloakManifests extends Construct {
     const {
       cluster,
       keycloakHostname,
+      exposure,
       keycloakAdminUser,
       keycloakAdminPassword,
+      cloudflareTunnelToken,
+      mkcertTlsCertB64,
+      mkcertTlsKeyB64,
       dbHost,
       dbName,
       dbPassword,
       replicas = 1,
     } = props;
+
+    if (exposure === 'cloudflare-tunnel' && !cloudflareTunnelToken) {
+      throw new Error('cloudflareTunnelToken is required when exposure is cloudflare-tunnel');
+    }
 
     // ── 1. Secret ─────────────────────────────────────────────────────────────
     const dbSecret = new eks.KubernetesManifest(this, 'DbSecret', {
@@ -120,6 +138,7 @@ export class KeycloakManifests extends Construct {
                     env: [
                       { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: keycloakAdminUser },
                       { name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', value: keycloakAdminPassword },
+                      { name: 'KC_HOSTNAME', value: keycloakHostname },
                       // Proxy / networking
                       { name: 'KC_PROXY_HEADERS',  value: 'xforwarded' },
                       { name: 'KC_HTTP_ENABLED',   value: 'true' },
@@ -183,54 +202,133 @@ export class KeycloakManifests extends Construct {
     });
 
     // ── 5. Ingress ────────────────────────────────────────────────────────────
-    const ingress = new eks.KubernetesManifest(this, 'Ingress', {
-      cluster,
-      manifest: [
-        {
-          apiVersion: 'networking.k8s.io/v1',
-          kind: 'Ingress',
-          metadata: {
-            name: 'keycloak',
-            annotations: {
-              // Requires an nginx ingress controller in the cluster
-              'kubernetes.io/ingress.class': 'nginx',
+    let ingress: eks.KubernetesManifest | undefined;
+    if (exposure === 'ingress') {
+      let tlsSecret: eks.KubernetesManifest | undefined;
+      if (mkcertTlsCertB64 && mkcertTlsKeyB64) {
+        const tlsCrt = Buffer.from(mkcertTlsCertB64, 'base64').toString('utf8');
+        const tlsKey = Buffer.from(mkcertTlsKeyB64, 'base64').toString('utf8');
+        tlsSecret = new eks.KubernetesManifest(this, 'IngressTlsSecret', {
+          cluster,
+          manifest: [
+            {
+              apiVersion: 'v1',
+              kind: 'Secret',
+              metadata: { name: 'keycloak-tls-cert' },
+              type: 'kubernetes.io/tls',
+              stringData: {
+                'tls.crt': tlsCrt,
+                'tls.key': tlsKey,
+              },
+            },
+          ],
+        });
+      }
+
+      ingress = new eks.KubernetesManifest(this, 'Ingress', {
+        cluster,
+        manifest: [
+          {
+            apiVersion: 'networking.k8s.io/v1',
+            kind: 'Ingress',
+            metadata: {
+              name: 'keycloak',
+              annotations: {
+                'kubernetes.io/ingress.class': 'nginx',
+              },
+            },
+            spec: {
+              tls: [
+                {
+                  hosts: [keycloakHostname],
+                  secretName: 'keycloak-tls-cert',
+                },
+              ],
+              rules: [
+                {
+                  host: keycloakHostname,
+                  http: {
+                    paths: [
+                      {
+                        path: '/',
+                        pathType: 'Prefix',
+                        backend: {
+                          service: { name: 'keycloak', port: { number: 8080 } },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
             },
           },
-          spec: {
-            tls: [
-              {
-                hosts: [keycloakHostname],
-                // Provision this TLS secret externally (e.g. cert-manager)
-                secretName: 'keycloak-tls-cert',
-              },
-            ],
-            rules: [
-              {
-                host: keycloakHostname,
-                http: {
-                  paths: [
+        ],
+      });
+
+      if (tlsSecret) {
+        ingress.node.addDependency(tlsSecret);
+      }
+    }
+
+    let cloudflareTunnel: eks.KubernetesManifest | undefined;
+    if (exposure === 'cloudflare-tunnel' && cloudflareTunnelToken) {
+      cloudflareTunnel = new eks.KubernetesManifest(this, 'CloudflareTunnel', {
+        cluster,
+        manifest: [
+          {
+            apiVersion: 'v1',
+            kind: 'Secret',
+            metadata: { name: 'cloudflared-token' },
+            stringData: { token: cloudflareTunnelToken },
+          },
+          {
+            apiVersion: 'apps/v1',
+            kind: 'Deployment',
+            metadata: { name: 'cloudflared', labels: { app: 'cloudflared' } },
+            spec: {
+              replicas: 1,
+              selector: { matchLabels: { app: 'cloudflared' } },
+              template: {
+                metadata: { labels: { app: 'cloudflared' } },
+                spec: {
+                  containers: [
                     {
-                      path: '/',
-                      pathType: 'Prefix',
-                      backend: {
-                        service: { name: 'keycloak', port: { number: 8080 } },
+                      name: 'cloudflared',
+                      image: 'cloudflare/cloudflared:2026.3.0',
+                      args: ['tunnel', '--no-autoupdate', 'run', '--token', '$(TUNNEL_TOKEN)'],
+                      env: [
+                        {
+                          name: 'TUNNEL_TOKEN',
+                          valueFrom: {
+                            secretKeyRef: { name: 'cloudflared-token', key: 'token' },
+                          },
+                        },
+                      ],
+                      resources: {
+                        limits: { cpu: '250m', memory: '256Mi' },
+                        requests: { cpu: '50m', memory: '64Mi' },
                       },
                     },
                   ],
                 },
               },
-            ],
+            },
           },
-        },
-      ],
-    });
+        ],
+      });
+    }
 
     // ── Dependency ordering ───────────────────────────────────────────────────
     // StatefulSet waits for the Secret and headless Service to be ready
     sts.node.addDependency(dbSecret);
     sts.node.addDependency(discoverySvc);
-    // Ingress waits for the ClusterIP Service to be ready
-    ingress.node.addDependency(svc);
+    // Ingress or tunnel waits for the Service to be ready
+    if (ingress) {
+      ingress.node.addDependency(svc);
+    }
+    if (cloudflareTunnel) {
+      cloudflareTunnel.node.addDependency(svc);
+    }
   }
 }
 
