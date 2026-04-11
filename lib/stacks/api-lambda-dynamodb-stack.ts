@@ -1,11 +1,14 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import { Construct } from 'constructs';
-import * as path from 'path';
+import * as path from 'node:path';
 
 export class ApiLambdaDynamodbStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -21,6 +24,21 @@ export class ApiLambdaDynamodbStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+
+    const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
+      websiteIndexDocument: 'index.html',
+      websiteErrorDocument: 'index.html',
+      blockPublicAccess: new s3.BlockPublicAccess({
+        blockPublicAcls: false,
+        blockPublicPolicy: false,
+        ignorePublicAcls: false,
+        restrictPublicBuckets: false,
+      }),
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
+
+    websiteBucket.grantPublicAccess();
 
     const crudFunction = new lambda.Function(this, 'RepositoriesCrudFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -61,6 +79,54 @@ export class ApiLambdaDynamodbStack extends cdk.Stack {
       },
     });
 
+    const rewriteApiPathFunction = new cloudfront.Function(this, 'RewriteApiPathFunction', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var request = event.request;
+  if (request.uri.indexOf('/api/') === 0) {
+    request.uri = request.uri.substring(4);
+  }
+  return request;
+}
+      `),
+    });
+
+    const distribution = new cloudfront.Distribution(this, 'WebsiteDistribution', {
+      defaultRootObject: 'index.html',
+      defaultBehavior: {
+        origin: new origins.S3StaticWebsiteOrigin(websiteBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      additionalBehaviors: {
+        'api/*': {
+          origin: new origins.HttpOrigin(
+            `${api.restApiId}.execute-api.${cdk.Stack.of(this).region}.amazonaws.com`,
+            {
+              originPath: `/${api.deploymentStage.stageName}`,
+            },
+          ),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          functionAssociations: [
+            {
+              function: rewriteApiPathFunction,
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ],
+        },
+      },
+    });
+
+    new s3deploy.BucketDeployment(this, 'WebsiteDeployment', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'website'))],
+      destinationBucket: websiteBucket,
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
     const lambdaIntegration = new apigateway.LambdaIntegration(crudFunction);
 
     const repositories = api.root.addResource('repositories');
@@ -88,6 +154,16 @@ export class ApiLambdaDynamodbStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'FilesBucketName', {
       value: filesBucket.bucketName,
       description: 'S3 bucket for repository profile images',
+    });
+
+    new cdk.CfnOutput(this, 'WebsiteBucketName', {
+      value: websiteBucket.bucketName,
+      description: 'S3 bucket for the static website',
+    });
+
+    new cdk.CfnOutput(this, 'WebsiteUrl', {
+      value: `https://${distribution.domainName}`,
+      description: 'CloudFront URL for the static website',
     });
   }
 }

@@ -44,9 +44,15 @@ describe('ApiLambdaDynamodbStack', () => {
   });
 
   it('creates an S3 bucket for repository files', () => {
-    template.resourceCountIs('AWS::S3::Bucket', 1);
-    template.hasResourceProperties('AWS::S3::Bucket', {
-      BucketName: 'files-bucket',
+    template.resourceCountIs('AWS::S3::Bucket', 2);
+  });
+
+  it('creates a CloudFront distribution for the static website', () => {
+    template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultRootObject: 'index.html',
+      }),
     });
   });
 

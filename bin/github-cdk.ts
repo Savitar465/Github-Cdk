@@ -21,16 +21,16 @@ const env = (environmentConfig.account || environmentConfig.region)
 //   env,
 // });
 
-// new ApiLambdaDynamodbStack(app, 'ApiLambdaDynamodbStack', {
-//   env: {
-//     account: process.env.CDK_DEFAULT_ACCOUNT,
-//     region: process.env.CDK_DEFAULT_REGION,
-//   },
-// });
-
-new S3DynamoSyncStack(app, 'S3DynamoSyncStack', {
+new ApiLambdaDynamodbStack(app, 'ApiLambdaDynamodbStack', {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
   },
 });
+
+// new S3DynamoSyncStack(app, 'S3DynamoSyncStack', {
+//   env: {
+//     account: process.env.CDK_DEFAULT_ACCOUNT,
+//     region: process.env.CDK_DEFAULT_REGION,
+//   },
+// });

@@ -37,6 +37,12 @@ Main sizing variables (all read from `.env`):
 - `npx cdk synth` synthesize CloudFormation template
 - `npx cdk deploy` deploy the stack
 
+The `ApiLambdaDynamodbStack` now also deploys:
+
+- a static website bucket
+- CloudFront in front of the site
+- an `/api/*` path on CloudFront that forwards to the Lambda API
+
 ### S3 + DynamoDB sync stack
 
 - `npm run synth:sync` synthesize the S3-to-Dynamo sync stack
