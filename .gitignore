@@ -11,3 +11,20 @@ node_modules
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Claude Code
+.claude-context.md
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
