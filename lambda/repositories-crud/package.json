@@ -1,0 +1,11 @@
+{
+  "name": "repositories-crud-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependencies for repositories CRUD Lambda",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.901.0"
+  }
+}
+
