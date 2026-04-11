@@ -22,7 +22,10 @@
     "deploy:hello": "cdk deploy --app \"npx ts-node --prefer-ts-exts bin/hello-lambda.ts\"",
     "synth:crud": "cdk synth --app \"npx ts-node --prefer-ts-exts bin/api-lambda-dynamodb.ts\"",
     "diff:crud": "cdk diff --app \"npx ts-node --prefer-ts-exts bin/api-lambda-dynamodb.ts\"",
-    "deploy:crud": "cdk deploy --app \"npx ts-node --prefer-ts-exts bin/api-lambda-dynamodb.ts\" --require-approval never"
+    "deploy:crud": "cdk deploy --app \"npx ts-node --prefer-ts-exts bin/api-lambda-dynamodb.ts\" --require-approval never",
+    "synth:sync": "cdk synth --app \"npx ts-node --prefer-ts-exts bin/s3-dynamo-sync.ts\"",
+    "diff:sync": "cdk diff --app \"npx ts-node --prefer-ts-exts bin/s3-dynamo-sync.ts\"",
+    "deploy:sync": "cdk deploy --app \"npx ts-node --prefer-ts-exts bin/s3-dynamo-sync.ts\" --require-approval never"
   },
   "devDependencies": {
     "@types/jest": "^30",

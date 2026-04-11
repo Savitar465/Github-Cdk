@@ -5,7 +5,8 @@
   "description": "Dependencies for repositories CRUD Lambda",
   "license": "UNLICENSED",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.901.0"
+    "@aws-sdk/client-dynamodb": "^3.901.0",
+    "@aws-sdk/client-s3": "^3.901.0"
   }
 }
 

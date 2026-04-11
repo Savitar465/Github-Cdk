@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Github Repositories API",
-    "description": "Postman collection for API Gateway + Lambda + DynamoDB repository CRUD endpoints.",
+    "description": "Postman collection for API Gateway + Lambda + DynamoDB repository CRUD endpoints.\n\nUsage flow:\n1) Set {{baseUrl}} to your deployed ApiUrl including /v1\n2) Run Health\n3) Run Create Repository (with profile image)\n4) Run Get/List/Update/Delete by id\n\nImportant: when an image object is deleted from S3, a separate Lambda removes its DynamoDB repository item automatically.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -19,6 +19,7 @@
   "item": [
     {
       "name": "Health - GET /health",
+      "description": "Checks if the API is alive.",
       "request": {
         "method": "GET",
         "header": [],
@@ -35,6 +36,7 @@
     },
     {
       "name": "Create Repository - POST /repositories",
+      "description": "Creates a repository and optionally uploads a profile image to S3 using profileImageBase64 + profileImageContentType.",
       "request": {
         "method": "POST",
         "header": [
@@ -46,7 +48,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"mini-github-api\",\n  \"owner\": \"savitar\",\n  \"description\": \"Repository created from Postman\",\n  \"visibility\": \"public\",\n  \"defaultBranch\": \"main\",\n  \"topics\": [\"aws\", \"cdk\", \"lambda\"],\n  \"archived\": false\n}"
+          "raw": "{\n  \"name\": \"mini-github-api\",\n  \"owner\": \"savitar\",\n  \"description\": \"Repository created from Postman\",\n  \"visibility\": \"public\",\n  \"defaultBranch\": \"main\",\n  \"topics\": [\"aws\", \"cdk\", \"lambda\"],\n  \"archived\": false,\n  \"profileImageContentType\": \"image/png\",\n  \"profileImageBase64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVQIW2P8/5+hHgAGgwJ/lwJ6WQAAAABJRU5ErkJggg==\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/repositories",
@@ -67,6 +69,10 @@
               "pm.test('Status is 201', function () {",
               "  pm.response.to.have.status(201);",
               "});",
+                "pm.test('Response has repository id', function () {",
+                "  const data = pm.response.json();",
+                "  pm.expect(data.id).to.be.a('string').and.not.empty;",
+                "});",
               "",
               "const data = pm.response.json();",
               "if (data && data.id) {",
@@ -79,6 +85,7 @@
     },
     {
       "name": "List Repositories - GET /repositories",
+      "description": "Returns all repositories stored in DynamoDB.",
       "request": {
         "method": "GET",
         "header": [],
@@ -95,6 +102,7 @@
     },
     {
       "name": "Get Repository By ID - GET /repositories/{id}",
+      "description": "Fetches one repository by id. Requires {{repositoryId}}.",
       "request": {
         "method": "GET",
         "header": [],
@@ -112,6 +120,7 @@
     },
     {
       "name": "Update Repository - PUT /repositories/{id}",
+      "description": "Partially updates repository metadata fields (description, visibility, metrics, topics, etc.). Requires {{repositoryId}}.",
       "request": {
         "method": "PUT",
         "header": [
@@ -139,8 +148,27 @@
     },
     {
       "name": "Delete Repository - DELETE /repositories/{id}",
+      "description": "Deletes repository item from DynamoDB by id. Requires {{repositoryId}}.",
       "request": {
         "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/repositories/{{repositoryId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "repositories",
+            "{{repositoryId}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Cleanup Behavior Note",
+      "description": "There is no REST endpoint to delete S3 objects directly. To test automatic cleanup Lambda:\n1) Create repository with profile image\n2) Delete the object key profileImageKey in S3 (console/CLI)\n3) Call GET /repositories/{id} and expect 404 because cleanup Lambda deletes DynamoDB item.",
+      "request": {
+        "method": "GET",
         "header": [],
         "url": {
           "raw": "{{baseUrl}}/repositories/{{repositoryId}}",

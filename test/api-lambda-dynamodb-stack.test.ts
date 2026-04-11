@@ -21,14 +21,32 @@ describe('ApiLambdaDynamodbStack', () => {
   });
 
   it('creates a Lambda function with table name env var', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 1);
     template.hasResourceProperties('AWS::Lambda::Function', {
+      Description: 'Lambda CRUD API for GitHub-like repositories in DynamoDB',
+      Runtime: 'nodejs20.x',
+      Environment: {
+        Variables: {
+          TABLE_NAME: Match.anyValue(),
+          FILES_BUCKET_NAME: Match.anyValue(),
+        },
+      },
+    });
+
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Description: 'Deletes repository item from DynamoDB when its file is deleted from S3',
       Runtime: 'nodejs20.x',
       Environment: {
         Variables: {
           TABLE_NAME: Match.anyValue(),
         },
       },
+    });
+  });
+
+  it('creates an S3 bucket for repository files', () => {
+    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      BucketName: 'files-bucket',
     });
   });
 

@@ -2,7 +2,7 @@
 import * as cdk from 'aws-cdk-lib';
 
 import { getEnvironmentConfig } from '../config/app-config';
-import {ApiLambdaDynamodbStack, HelloLambdaStack, KeycloakStack} from '../lib/stacks';
+import {ApiLambdaDynamodbStack, HelloLambdaStack, KeycloakStack, S3DynamoSyncStack} from '../lib/stacks';
 
 const app = new cdk.App();
 const config = getEnvironmentConfig();
@@ -21,7 +21,14 @@ const env = (environmentConfig.account || environmentConfig.region)
 //   env,
 // });
 
-new ApiLambdaDynamodbStack(app, 'ApiLambdaDynamodbStack', {
+// new ApiLambdaDynamodbStack(app, 'ApiLambdaDynamodbStack', {
+//   env: {
+//     account: process.env.CDK_DEFAULT_ACCOUNT,
+//     region: process.env.CDK_DEFAULT_REGION,
+//   },
+// });
+
+new S3DynamoSyncStack(app, 'S3DynamoSyncStack', {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,

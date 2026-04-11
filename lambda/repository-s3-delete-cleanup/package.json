@@ -1,0 +1,11 @@
+{
+  "name": "repository-s3-delete-cleanup-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deletes repository records when S3 objects are removed",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.901.0"
+  }
+}
+

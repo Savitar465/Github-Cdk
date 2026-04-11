@@ -37,6 +37,17 @@ Main sizing variables (all read from `.env`):
 - `npx cdk synth` synthesize CloudFormation template
 - `npx cdk deploy` deploy the stack
 
+### S3 + DynamoDB sync stack
+
+- `npm run synth:sync` synthesize the S3-to-Dynamo sync stack
+- `npm run diff:sync` show infrastructure diff
+- `npm run deploy:sync` deploy the S3-to-Dynamo sync stack
+
+Behavior:
+
+- Uploading a file to the stack bucket inserts file metadata into DynamoDB.
+- Deleting a file from the bucket removes its metadata item from DynamoDB.
+
 ## Notes
 
 - This stack uses `RemovalPolicy.DESTROY` for easier development teardown.

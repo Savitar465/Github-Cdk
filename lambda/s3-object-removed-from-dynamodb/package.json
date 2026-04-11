@@ -1,0 +1,11 @@
+{
+  "name": "s3-object-removed-from-dynamodb",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lambda dependencies for S3 object removed metadata sync",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.901.0"
+  }
+}
+
