@@ -59,6 +59,11 @@ export class ApiLambdaDynamodbStack extends cdk.Stack {
       deployOptions: {
         stageName: 'v1',
       },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: ['Content-Type', 'Authorization'],
+      },
     });
 
     const lambdaIntegration = new apigateway.LambdaIntegration(crudFunction);

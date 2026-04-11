@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
     padding: 2rem;
 }
@@ -33,6 +33,40 @@ header p {
     font-size: 1.1rem;
 }
 
+/* Health Status */
+.health-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+}
+
+.health-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #707070;
+}
+
+.health-dot.online {
+    background: #4ecdc4;
+    box-shadow: 0 0 10px #4ecdc4;
+}
+
+.health-dot.offline {
+    background: #ff6b6b;
+    box-shadow: 0 0 10px #ff6b6b;
+}
+
+.health-text {
+    font-size: 0.85rem;
+    color: #a0a0a0;
+}
+
+/* Cards */
 .card {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 12px;
@@ -52,14 +86,30 @@ header p {
     color: #d0d0d0;
 }
 
+/* Forms */
 .form-group {
-    display: flex;
-    gap: 1rem;
     margin-bottom: 1rem;
 }
 
-input[type="text"] {
+.form-group label {
+    display: block;
+    margin-bottom: 0.3rem;
+    color: #a0a0a0;
+    font-size: 0.85rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-row .form-group {
     flex: 1;
+}
+
+input[type="text"],
+input[type="number"] {
+    width: 100%;
     padding: 0.8rem 1rem;
     border: none;
     border-radius: 8px;
@@ -68,10 +118,31 @@ input[type="text"] {
     color: #333;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="number"]:focus {
     outline: 2px solid #4ecdc4;
 }
 
+select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    cursor: pointer;
+}
+
+select:focus {
+    outline: 2px solid #4ecdc4;
+}
+
+input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Buttons */
 button, .button {
     padding: 0.8rem 1.5rem;
     border: none;
@@ -101,6 +172,24 @@ button:disabled {
     transform: none;
 }
 
+.btn-primary {
+    background: linear-gradient(135deg, #4ecdc4 0%, #3db8b0 100%);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.3);
+    box-shadow: none;
+}
+
+/* Loading */
 .loading {
     text-align: center;
     padding: 1rem;
@@ -108,56 +197,215 @@ button:disabled {
     font-weight: 500;
 }
 
-.result {
+/* Messages */
+.message {
     background: rgba(78, 205, 196, 0.2);
-    border-radius: 8px;
-    padding: 1rem;
-    margin-top: 1rem;
-}
-
-.result h3 {
+    border: 1px solid #4ecdc4;
     color: #4ecdc4;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-}
-
-.result pre {
-    background: rgba(0, 0, 0, 0.3);
     padding: 1rem;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    color: #fff;
+    border-radius: 8px;
+    margin-top: 1rem;
+    text-align: center;
 }
 
 .error {
     background: rgba(255, 107, 107, 0.2);
+    border: 1px solid #ff6b6b;
+    color: #ff6b6b;
+    padding: 1rem;
     border-radius: 8px;
-    padding: 1rem;
     margin-top: 1rem;
-}
-
-.error h3 {
-    color: #ff6b6b;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-}
-
-.error pre {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 1rem;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    color: #ff6b6b;
+    text-align: center;
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
+/* Repository List */
+.repo-list {
+    margin-top: 1rem;
+}
+
+.repo-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid #4ecdc4;
+}
+
+.repo-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.repo-name {
+    font-weight: 600;
+    color: #4ecdc4;
+    font-size: 1.1rem;
+}
+
+.repo-visibility {
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+
+.repo-visibility.public {
+    background: rgba(78, 205, 196, 0.3);
+    color: #4ecdc4;
+}
+
+.repo-visibility.private {
+    background: rgba(255, 107, 107, 0.3);
+    color: #ff6b6b;
+}
+
+.repo-archived {
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    background: rgba(255, 193, 7, 0.3);
+    color: #ffc107;
+}
+
+.repo-description {
+    color: #a0a0a0;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.repo-stats {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: #d0d0d0;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.repo-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.8rem;
+    color: #707070;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.repo-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.view-btn {
+    background: rgba(78, 205, 196, 0.2);
+    color: #4ecdc4;
+    border: 1px solid #4ecdc4;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+}
+
+.view-btn:hover {
+    background: #4ecdc4;
+    color: white;
+}
+
+.delete-btn {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+}
+
+.delete-btn:hover {
+    background: #ff6b6b;
+    color: white;
+}
+
+.empty-message {
+    text-align: center;
+    color: #707070;
+    padding: 1rem;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    color: #a0a0a0;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.modal-close:hover {
+    color: #ff6b6b;
+}
+
+.modal-content h2 {
+    color: #4ecdc4;
+    margin-bottom: 1.5rem;
+    padding-right: 2rem;
+}
+
+.modal-meta {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+    color: #a0a0a0;
+}
+
+.modal-meta p {
+    margin-bottom: 0.3rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.modal-actions button {
+    flex: 1;
+}
+
+/* Info Section */
 .info ul {
     list-style: none;
     padding-left: 0;
@@ -177,6 +425,7 @@ button:disabled {
     color: #ff6b6b;
 }
 
+/* Footer */
 footer {
     text-align: center;
     margin-top: 2rem;
@@ -185,9 +434,11 @@ footer {
     color: #707070;
 }
 
+/* Responsive */
 @media (max-width: 600px) {
-    .form-group {
+    .form-row {
         flex-direction: column;
+        gap: 0;
     }
 
     header h1 {
@@ -196,5 +447,13 @@ footer {
 
     .container {
         padding: 1rem;
+    }
+
+    .repo-actions {
+        flex-direction: column;
+    }
+
+    .modal-actions {
+        flex-direction: column;
     }
 }

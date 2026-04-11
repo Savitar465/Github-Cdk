@@ -1,218 +1,159 @@
 # Ejercicio 4: S3 + Sitio Web Estatico + API Gateway + Lambda + CloudFront
 
-Stack de AWS CDK que despliega un sitio web estatico en S3 con una API serverless.
+Stack de AWS CDK que despliega un sitio web estatico en S3 conectado al API CRUD del Ejercicio 2.
 
 ## Arquitectura
 
 ```
-                                    +------------------+
-                                    |    CloudFront    |
-                                    |      (CDN)       |
-                                    +--------+---------+
-                                             |
-                    +------------------------+------------------------+
-                    |                                                 |
-                    v                                                 v
-          +-----------------+                               +------------------+
-          |   S3 Bucket     |                               |   API Gateway    |
-          | (Static Website)|                               |    (REST API)    |
-          |                 |                               +--------+---------+
-          |  - index.html   |                                        |
-          |  - error.html   |                                        v
-          |  - styles.css   |                               +------------------+
-          |  - script.js    |                               |     Lambda       |
-          +-----------------+                               | (Node.js 20.x)   |
-                                                            +------------------+
++------------------+          +------------------------------------------+
+|    CloudFront    |          |           Ejercicio 2                    |
+|      (CDN)       |          |  +----------------+    +---------------+ |
++--------+---------+          |  |  API Gateway   |--->|    Lambda     | |
+         |                    |  +----------------+    +-------+-------+ |
+         v                    |                                |         |
++-----------------+           |                        +-------v-------+ |
+|   S3 Bucket     |           |                        |   DynamoDB    | |
+| (Static Website)|-- AJAX -->|                        +---------------+ |
+|                 |           +------------------------------------------+
+|  - index.html   |
+|  - styles.css   |
+|  - script.js    |
++-----------------+
+    Ejercicio 4
 ```
 
-## Componentes
+## Endpoints Cubiertos
 
-| Componente | Descripcion |
-|------------|-------------|
-| **S3 Bucket** | Hosting del sitio web estatico con index.html |
-| **CloudFront** | CDN para distribucion global con HTTPS |
-| **API Gateway** | REST API con endpoint `/hello` |
-| **Lambda** | Funcion serverless que responde con "Hello {name}!" |
+El sitio web implementa **TODOS** los endpoints del Ejercicio 2:
 
-## Estructura del Proyecto
+| Endpoint | Metodo | Funcionalidad |
+|----------|--------|---------------|
+| `/health` | GET | Indicador de estado en el header (verde = online, rojo = offline) |
+| `/repositories` | POST | Formulario para crear nuevo repositorio |
+| `/repositories` | GET | Lista todos los repositorios con stats |
+| `/repositories/{id}` | GET | Modal con detalle completo del repositorio |
+| `/repositories/{id}` | PUT | Formulario de edicion en modal |
+| `/repositories/{id}` | DELETE | Boton de eliminar con confirmacion |
 
-```
-├── bin/
-│   └── s3-static-website.ts      # Entrada CDK
-├── lib/stacks/
-│   └── s3-static-website-stack.ts # Stack principal
-├── website/
-│   ├── index.html                 # Pagina principal
-│   ├── error.html                 # Pagina de error 404
-│   ├── styles.css                 # Estilos
-│   └── script.js                  # Logica para llamar la API
-└── package.json                   # Scripts de deploy
-```
+## Funcionalidades del Sitio Web
 
-## Requisitos Previos
+- **Health Check**: Verifica automaticamente si el API esta online (cada 30 seg)
+- **Crear Repositorio**: Formulario con nombre, owner, descripcion, visibilidad y branch
+- **Listar Repositorios**: Muestra todos con stars, forks, issues y fechas
+- **Ver/Editar**: Modal con todos los campos editables
+- **Eliminar**: Con confirmacion antes de borrar
 
-1. **Node.js** (v18 o superior)
-2. **AWS CLI** configurado con credenciales
-3. **AWS CDK** instalado globalmente (opcional)
+## Requisitos
 
-## Configuracion Inicial (Primera Vez)
+1. **Desplegar primero el Ejercicio 2** (API + Lambda + DynamoDB)
+2. Copiar la URL del API
+3. Configurar la URL en `website/script.js`
+4. Desplegar el Ejercicio 4 (sitio web)
 
-### 1. Configurar AWS CLI
+## Despliegue Paso a Paso
+
+### Paso 1: Desplegar Ejercicio 2
 
 ```bash
-aws configure
+npm run deploy:crud
 ```
 
-Ingresa:
-- AWS Access Key ID
-- AWS Secret Access Key
-- Region (ej: `us-east-1`)
-- Output format: `json`
+Guarda la URL que aparece en `ApiUrl`:
+```
+Outputs:
+ApiLambdaDynamodbStack.ApiUrl = https://xxxxxx.execute-api.us-east-1.amazonaws.com/v1/
+```
 
-### 2. Bootstrap de CDK
+### Paso 2: Configurar la URL en el sitio web
+
+Edita `website/script.js` y reemplaza `API_URL_PLACEHOLDER`:
+
+```javascript
+const API_BASE_URL = 'https://xxxxxx.execute-api.us-east-1.amazonaws.com/v1/';
+```
+
+### Paso 3: Desplegar Ejercicio 4
 
 ```bash
-npx cdk bootstrap
+npm run deploy:website
+```
+
+### Paso 4: Abrir el sitio
+
+Usa la URL de CloudFront que aparece en los outputs:
+```
+Outputs:
+S3StaticWebsiteStack.CloudFrontURL = https://dxxxxxx.cloudfront.net
 ```
 
 ## Comandos Disponibles
 
 | Comando | Descripcion |
 |---------|-------------|
-| `npm run synth:website` | Genera el template CloudFormation |
-| `npm run diff:website` | Muestra cambios pendientes |
-| `npm run deploy:website` | Despliega el stack en AWS |
-| `npm run destroy:website` | Elimina todos los recursos |
+| `npm run deploy:crud` | Despliega Ejercicio 2 (API + DynamoDB) |
+| `npm run deploy:website` | Despliega Ejercicio 4 (S3 + CloudFront) |
+| `npm run destroy:website` | Elimina Ejercicio 4 |
+| `npm run destroy:crud` | Elimina Ejercicio 2 |
 
-## Despliegue
-
-### Paso 1: Instalar dependencias
-
-```bash
-npm install
-```
-
-### Paso 2: Compilar TypeScript
-
-```bash
-npm run build
-```
-
-### Paso 3: Desplegar
-
-```bash
-npm run deploy:website
-```
-
-### Paso 4: Copiar la URL de la API
-
-Al finalizar el deploy, veras outputs como:
+## Estructura de Archivos
 
 ```
-Outputs:
-S3StaticWebsiteStack.ApiEndpoint = https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/
-S3StaticWebsiteStack.CloudFrontURL = https://dxxxxx.cloudfront.net
-S3StaticWebsiteStack.HelloApiEndpoint = https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/hello
-S3StaticWebsiteStack.WebsiteURL = http://xxxxx.s3-website-us-east-1.amazonaws.com
+├── lib/stacks/
+│   ├── api-lambda-dynamodb-stack.ts  # Ejercicio 2: API + Lambda + DynamoDB
+│   └── s3-static-website-stack.ts    # Ejercicio 4: S3 + CloudFront
+├── lambda/
+│   └── repositories-crud/
+│       └── index.js                  # Lambda CRUD con CORS
+├── website/
+│   ├── index.html                    # Pagina principal con formularios
+│   ├── styles.css                    # Estilos responsive
+│   └── script.js                     # Logica CRUD completa
+└── bin/
+    └── s3-static-website.ts          # Entry point Ejercicio 4
 ```
 
-### Paso 5: Actualizar script.js
+## Relacion entre Ejercicios
 
-Edita `website/script.js` y reemplaza `API_URL_PLACEHOLDER` con tu `HelloApiEndpoint`:
+| Ejercicio | Stack | Que hace |
+|-----------|-------|----------|
+| 1 | HelloLambdaStack | Lambda "Hello World" |
+| 2 | ApiLambdaDynamodbStack | API Gateway + Lambda + DynamoDB (CRUD) |
+| 3 | S3DynamoSyncStack | S3 eventos -> Lambda -> DynamoDB |
+| **4** | S3StaticWebsiteStack | S3 sitio web que consume API del Ej. 2 |
 
-```javascript
-const API_URL = 'https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/hello';
-```
+## Puntos Extra Implementados
 
-### Paso 6: Re-desplegar
-
-```bash
-npm run deploy:website
-```
-
-### Paso 7: Probar
-
-Abre la URL de **CloudFrontURL** en tu navegador.
-
-## Uso del Sitio Web
-
-1. Ingresa tu nombre en el campo de texto
-2. Presiona el boton "Llamar API"
-3. La Lambda respondera con un mensaje personalizado
-
-## API Endpoints
-
-### POST /hello
-
-Request:
-```json
-{
-  "name": "Juan"
-}
-```
-
-Response:
-```json
-{
-  "message": "Hello Juan!",
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-### GET /hello
-
-Response:
-```json
-{
-  "message": "Hello World!",
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
+- [x] CloudFront CDN configurado con HTTPS
+- [x] Cache optimizado para archivos estaticos
+- [x] Redirect automatico de HTTP a HTTPS
 
 ## Limpieza
 
-Para eliminar todos los recursos de AWS:
+Para eliminar todos los recursos:
 
 ```bash
+# Primero el sitio web
 npm run destroy:website
+
+# Luego el API
+npm run destroy:crud
 ```
-
-## Verificar en Consola AWS
-
-| Servicio | Que buscar |
-|----------|------------|
-| S3 | Bucket `s3staticwebsitestack-websitebucket-*` |
-| Lambda | Funcion `S3StaticWebsiteStack-ApiFunction-*` |
-| API Gateway | API `StaticWebsiteApi` |
-| CloudFront | Distribution apuntando al bucket S3 |
-
-## Costos Estimados
-
-Este stack utiliza servicios con capa gratuita de AWS:
-- **S3**: 5GB almacenamiento gratis
-- **Lambda**: 1M requests/mes gratis
-- **API Gateway**: 1M requests/mes gratis
-- **CloudFront**: 1TB transferencia/mes gratis
 
 ## Troubleshooting
 
-### Error: "Access Denied" al acceder al sitio
-- Verifica que el bucket tenga `publicReadAccess: true`
-- El stack ya configura esto automaticamente
-
-### Error: CORS al llamar la API
-- El API Gateway ya tiene CORS configurado
+### El indicador de health esta rojo
+- Verifica que el Ejercicio 2 este desplegado
 - Verifica que la URL en `script.js` sea correcta
+- Redespliega el Ejercicio 2: `npm run deploy:crud`
+
+### Error CORS al llamar la API
+- El Ejercicio 2 ya tiene CORS configurado
+- Redespliega: `npm run deploy:crud`
+
+### El sitio muestra "Configura API_BASE_URL"
+- Edita `website/script.js` con la URL correcta
+- Redespliega: `npm run deploy:website`
 
 ### CloudFront muestra contenido viejo
-- CloudFront cachea el contenido
-- Espera unos minutos o crea una invalidation en la consola
-
-## Tecnologias
-
-- AWS CDK v2 (TypeScript)
-- AWS S3
-- AWS Lambda (Node.js 20.x)
-- AWS API Gateway
-- AWS CloudFront
-- HTML/CSS/JavaScript
+- Espera unos minutos (cache de CloudFront)
+- O crea una invalidation en la consola de AWS CloudFront

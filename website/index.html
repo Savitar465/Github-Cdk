@@ -3,56 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AWS CDK - Sitio Web Estatico</title>
+    <title>AWS CDK - Repositorios</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>AWS CDK Demo</h1>
-            <p>S3 + API Gateway + Lambda + CloudFront</p>
+            <h1>GitHub Repositories</h1>
+            <p>S3 + API Gateway + Lambda + DynamoDB + CloudFront</p>
+            <div id="healthStatus" class="health-status">
+                <span class="health-dot"></span>
+                <span class="health-text">Verificando API...</span>
+            </div>
         </header>
 
         <main>
+            <!-- Crear Repositorio -->
             <section class="card">
-                <h2>Llamar a la API Lambda</h2>
-                <p>Ingresa tu nombre y presiona el boton para llamar a la API:</p>
-
-                <div class="form-group">
-                    <input type="text" id="nameInput" placeholder="Tu nombre..." />
-                    <button id="callApiBtn" onclick="callApi()">
-                        Llamar API
+                <h2>Crear Repositorio</h2>
+                <form id="createForm" onsubmit="createRepository(event)">
+                    <div class="form-group">
+                        <input type="text" id="repoName" placeholder="Nombre del repositorio" required />
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="repoOwner" placeholder="Owner (ej: tu-usuario)" required />
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="repoDescription" placeholder="Descripcion (opcional)" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <select id="repoVisibility">
+                                <option value="public">Publico</option>
+                                <option value="private">Privado</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="repoBranch" placeholder="Branch (default: main)" />
+                        </div>
+                    </div>
+                    <button type="submit" id="createBtn">
+                        Crear Repositorio
                     </button>
-                </div>
+                </form>
+            </section>
 
+            <!-- Listar Repositorios -->
+            <section class="card">
+                <h2>Repositorios</h2>
+                <button id="refreshBtn" onclick="listRepositories()">
+                    Actualizar Lista
+                </button>
                 <div id="loading" class="loading hidden">
                     Cargando...
                 </div>
-
-                <div id="result" class="result hidden">
-                    <h3>Respuesta de Lambda:</h3>
-                    <pre id="responseText"></pre>
+                <div id="repoList" class="repo-list">
+                    <p class="empty-message">Presiona "Actualizar Lista" para ver los repositorios</p>
                 </div>
+            </section>
 
-                <div id="error" class="error hidden">
-                    <h3>Error:</h3>
-                    <pre id="errorText"></pre>
+            <!-- Modal para Ver/Editar Repositorio -->
+            <div id="repoModal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="modal-close" onclick="closeModal()">&times;</span>
+                    <h2 id="modalTitle">Detalle del Repositorio</h2>
+
+                    <form id="editForm" onsubmit="updateRepository(event)">
+                        <input type="hidden" id="editId" />
+
+                        <div class="form-group">
+                            <label>Nombre</label>
+                            <input type="text" id="editName" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Owner</label>
+                            <input type="text" id="editOwner" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Descripcion</label>
+                            <input type="text" id="editDescription" />
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Visibilidad</label>
+                                <select id="editVisibility">
+                                    <option value="public">Publico</option>
+                                    <option value="private">Privado</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Branch</label>
+                                <input type="text" id="editBranch" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Stars</label>
+                                <input type="number" id="editStars" min="0" />
+                            </div>
+                            <div class="form-group">
+                                <label>Forks</label>
+                                <input type="number" id="editForks" min="0" />
+                            </div>
+                            <div class="form-group">
+                                <label>Issues</label>
+                                <input type="number" id="editIssues" min="0" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="editArchived" />
+                                Archivado
+                            </label>
+                        </div>
+
+                        <div class="modal-meta" id="modalMeta"></div>
+
+                        <div class="modal-actions">
+                            <button type="submit" class="btn-primary">Guardar Cambios</button>
+                            <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
+                        </div>
+                    </form>
                 </div>
+            </div>
+
+            <!-- Mensajes -->
+            <div id="message" class="message hidden"></div>
+            <div id="error" class="error hidden"></div>
+
+            <!-- Arquitectura -->
+            <section class="card info">
+                <h2>Endpoints del API (Ejercicio 2)</h2>
+                <ul>
+                    <li><strong>POST</strong> /repositories - Crear repositorio</li>
+                    <li><strong>GET</strong> /repositories - Listar todos</li>
+                    <li><strong>GET</strong> /repositories/{id} - Ver detalle</li>
+                    <li><strong>PUT</strong> /repositories/{id} - Actualizar</li>
+                    <li><strong>DELETE</strong> /repositories/{id} - Eliminar</li>
+                    <li><strong>GET</strong> /health - Health check</li>
+                </ul>
             </section>
 
             <section class="card info">
                 <h2>Arquitectura</h2>
                 <ul>
-                    <li><strong>S3:</strong> Hosting del sitio web estatico</li>
-                    <li><strong>CloudFront:</strong> CDN para distribucion global</li>
-                    <li><strong>API Gateway:</strong> Punto de entrada REST</li>
-                    <li><strong>Lambda:</strong> Funcion serverless que procesa la solicitud</li>
+                    <li><strong>S3:</strong> Hosting del sitio web estatico (Ejercicio 4)</li>
+                    <li><strong>CloudFront:</strong> CDN para distribucion global (Puntos Extra)</li>
+                    <li><strong>API Gateway:</strong> REST API del Ejercicio 2</li>
+                    <li><strong>Lambda:</strong> CRUD de repositorios (Ejercicio 2)</li>
+                    <li><strong>DynamoDB:</strong> Base de datos NoSQL (Ejercicio 2)</li>
                 </ul>
             </section>
         </main>
 
         <footer>
-            <p>Ejercicio 4 - AWS CDK con TypeScript</p>
+            <p>Ejercicio 4 conectado al Ejercicio 2 - AWS CDK con TypeScript</p>
         </footer>
     </div>
 
