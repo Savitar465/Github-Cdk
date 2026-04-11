@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS CDK - Sitio Web Estatico</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AWS CDK Demo</h1>
+            <p>S3 + API Gateway + Lambda + CloudFront</p>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>Llamar a la API Lambda</h2>
+                <p>Ingresa tu nombre y presiona el boton para llamar a la API:</p>
+
+                <div class="form-group">
+                    <input type="text" id="nameInput" placeholder="Tu nombre..." />
+                    <button id="callApiBtn" onclick="callApi()">
+                        Llamar API
+                    </button>
+                </div>
+
+                <div id="loading" class="loading hidden">
+                    Cargando...
+                </div>
+
+                <div id="result" class="result hidden">
+                    <h3>Respuesta de Lambda:</h3>
+                    <pre id="responseText"></pre>
+                </div>
+
+                <div id="error" class="error hidden">
+                    <h3>Error:</h3>
+                    <pre id="errorText"></pre>
+                </div>
+            </section>
+
+            <section class="card info">
+                <h2>Arquitectura</h2>
+                <ul>
+                    <li><strong>S3:</strong> Hosting del sitio web estatico</li>
+                    <li><strong>CloudFront:</strong> CDN para distribucion global</li>
+                    <li><strong>API Gateway:</strong> Punto de entrada REST</li>
+                    <li><strong>Lambda:</strong> Funcion serverless que procesa la solicitud</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>Ejercicio 4 - AWS CDK con TypeScript</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
