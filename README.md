@@ -6,6 +6,12 @@ This CDK app provisions a Keycloak platform on AWS with:
 - Keycloak on Kubernetes manifests
 - Amazon RDS PostgreSQL database for Keycloak
 
+It also includes an EC2 services platform stack with:
+
+- VPC with public and private subnets
+- Public NLB and private ALB (NLB target group points to ALB)
+- Three Ubuntu `t3.micro` instances in different AZs for Keycloak, SonarQube Community, and RabbitMQ
+
 ## Architecture highlights
 
 - Keycloak is configured to use external PostgreSQL (RDS), not in-cluster Postgres.
@@ -48,6 +54,17 @@ The `ApiLambdaDynamodbStack` now also deploys:
 - `npm run synth:sync` synthesize the S3-to-Dynamo sync stack
 - `npm run diff:sync` show infrastructure diff
 - `npm run deploy:sync` deploy the S3-to-Dynamo sync stack
+
+### EC2 services platform stack
+
+- `npm run synth:ec2-services` synthesize the EC2 services stack
+- `npm run diff:ec2-services` show infrastructure diff
+- `npm run deploy:ec2-services` deploy the EC2 services stack
+
+Optional environment variables:
+
+- `ALLOWED_SSH_CIDR` (default `0.0.0.0/0`)
+- `EC2_KEY_NAME` (EC2 key pair used for SSH)
 
 Behavior:
 
