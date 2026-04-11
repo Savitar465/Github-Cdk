@@ -20,7 +20,7 @@ export class GithubVpc extends Construct {
 
     this.vpc = new ec2.Vpc(this, 'Vpc', {
       maxAzs: props.maxAzs ?? 2,
-      natGateways: props.natGateways ?? 0,
+      natGateways: props.natGateways ?? 1,
       subnetConfiguration: [
         {
           name: 'Public',
@@ -28,7 +28,12 @@ export class GithubVpc extends Construct {
           cidrMask: 24,
         },
         {
-          name: 'PrivateIsolated',
+          name: 'Private',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          cidrMask: 24,
+        },
+        {
+          name: 'Isolated',
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },

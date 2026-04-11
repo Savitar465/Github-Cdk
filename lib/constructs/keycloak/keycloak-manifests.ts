@@ -1,4 +1,4 @@
-import * as eks from 'aws-cdk-lib/aws-eks';
+import * as eks from 'aws-cdk-lib/aws-eks-v2';
 import { Construct } from 'constructs';
 
 export interface KeycloakManifestsProps {
@@ -235,9 +235,11 @@ export class KeycloakManifests extends Construct {
               name: 'keycloak',
               annotations: {
                 'kubernetes.io/ingress.class': 'nginx',
+                'nginx.ingress.kubernetes.io/proxy-body-size': '0',
               },
             },
             spec: {
+              ingressClassName: 'nginx',
               tls: [
                 {
                   hosts: [keycloakHostname],

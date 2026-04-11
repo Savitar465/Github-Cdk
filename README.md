@@ -39,15 +39,9 @@ Main sizing variables (all read from `.env`):
 
 ## Cloudflare Tunnel setup
 
-1. In Cloudflare Zero Trust, go to **Networks > Tunnels** and create a tunnel.
-2. In that tunnel, open **Public Hostnames** and add:
-
-   - `Subdomain`: `keycloak`
-   - `Domain`: `savitar.online`
-   - `Type`: `HTTP`
-   - `URL`: `keycloak.default.svc.cluster.local:8080`
-
-3. Copy the tunnel token and set these variables in `.env`:
+1. In Cloudflare Zero Trust, create a tunnel and copy the token.
+2. In Cloudflare DNS, create a record for your hostname (for example `keycloak.savitar.online`) routed through the tunnel.
+3. Set these variables in `.env`:
 
    - `KEYCLOAK_HOSTNAME=keycloak.savitar.online`
    - `KEYCLOAK_EXPOSURE=cloudflare-tunnel`
@@ -63,22 +57,11 @@ The stack deploys a `cloudflared` Deployment in Kubernetes; traffic flows from C
 
    - `mkcert keycloak.savitar.online`
 
-2. Move files to the local `tls/` folder (already ignored by git):
+2. Base64 encode files and place them in `.env`:
 
-   - `tls/keycloak.savitar.online.pem`
-   - `tls/keycloak.savitar.online-key.pem`
-
-3. Use file paths in `.env` (recommended):
-
-   - `MKCERT_TLS_CERT_PATH=./tls/keycloak.savitar.online.pem`
-   - `MKCERT_TLS_KEY_PATH=./tls/keycloak.savitar.online-key.pem`
+   - `MKCERT_TLS_CERT_B64=<base64 of certificate PEM>`
+   - `MKCERT_TLS_KEY_B64=<base64 of private key PEM>`
    - `KEYCLOAK_EXPOSURE=ingress`
-
-4. Optional: print base64 values for `.env` using the helper script:
-
-   - `npm run tls:encode -- ./tls/keycloak.savitar.online.pem ./tls/keycloak.savitar.online-key.pem`
-
-   This outputs `MKCERT_TLS_CERT_B64=` and `MKCERT_TLS_KEY_B64=`.
 
 When set, CDK creates the Kubernetes TLS secret `keycloak-tls-cert` and attaches it to the Keycloak ingress.
 

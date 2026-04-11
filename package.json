@@ -16,8 +16,7 @@
     "diff:dev": "cdk diff --context env=dev",
     "diff:prod": "cdk diff --context env=prod",
     "deploy:dev": "cdk deploy --context env=dev --require-approval never",
-    "deploy:prod": "cdk deploy --context env=prod",
-    "tls:encode": "ts-node scripts/encode-tls.ts"
+    "deploy:prod": "cdk deploy --context env=prod"
   },
   "devDependencies": {
     "@types/jest": "^30",
@@ -30,6 +29,7 @@
   },
   "dependencies": {
     "@aws-cdk/lambda-layer-kubectl-v29": "^2.1.1",
+    "@aws-cdk/lambda-layer-kubectl-v35": "^2.2.1",
     "aws-cdk-lib": "^2.247.0",
     "cdk-rds-sql": "^8.0.4",
     "constructs": "^10.5.0",

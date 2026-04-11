@@ -1,5 +1,6 @@
 import { config as loadDotEnv } from 'dotenv';
-import { readFileAsBase64 } from './tls-encoding';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Load .env once at startup so every consumer of this module gets the same values.
 loadDotEnv();
@@ -27,6 +28,8 @@ export interface EnvironmentConfig {
   readonly eksNodeMinSize: number;
   /** Maximum worker node count */
   readonly eksNodeMaxSize: number;
+  /** IAM role ARNs that must get EKS cluster-admin access */
+  readonly eksAdminRoleArns: string[];
 
   /** Public hostname exposed via the Keycloak Ingress */
   readonly keycloakHostname: string;
@@ -42,10 +45,6 @@ export interface EnvironmentConfig {
   readonly mkcertTlsCertB64?: string;
   /** Optional base64-encoded mkcert private key PEM (used to create keycloak-tls-cert) */
   readonly mkcertTlsKeyB64?: string;
-  /** Optional file path to mkcert certificate PEM; converted to base64 at startup */
-  readonly mkcertTlsCertPath?: string;
-  /** Optional file path to mkcert private key PEM; converted to base64 at startup */
-  readonly mkcertTlsKeyPath?: string;
 
   /** RDS master password for the `postgres` user ⚠️ use Secrets Manager in production */
   readonly dbPassword: string;
@@ -116,6 +115,45 @@ function parseBoolean(name: string, defaultValue: boolean): boolean {
   }
 }
 
+function parseCsv(name: string): string[] {
+  const raw = getOptionalString(name);
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+/**
+ * Reads a file and returns its base64-encoded contents, or undefined if the file doesn't exist.
+ * Supports both absolute and relative paths (relative to cwd).
+ */
+function readFileAsBase64(filePath: string | undefined): string | undefined {
+  if (!filePath) {
+    return undefined;
+  }
+
+  try {
+    const absolutePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.join(process.cwd(), filePath);
+
+    if (!fs.existsSync(absolutePath)) {
+      console.warn(`TLS file not found: ${absolutePath}. Proceeding without it.`);
+      return undefined;
+    }
+
+    const fileContent = fs.readFileSync(absolutePath);
+    return fileContent.toString('base64');
+  } catch (error) {
+    console.warn(`Error reading TLS file at ${filePath}:`, error);
+    return undefined;
+  }
+}
+
 /**
  * Returns the validated configuration read from `.env`/process env.
  */
@@ -126,32 +164,41 @@ export function getEnvironmentConfig(): AppConfig {
   }
 
   const cloudflareTunnelToken = getOptionalString('CLOUDFLARE_TUNNEL_TOKEN');
-  const mkcertTlsCertPath = getOptionalString('MKCERT_TLS_CERT_PATH');
-  const mkcertTlsKeyPath = getOptionalString('MKCERT_TLS_KEY_PATH');
-  const mkcertTlsCertB64 = getOptionalString('MKCERT_TLS_CERT_B64')
-    ?? (mkcertTlsCertPath ? readFileAsBase64(mkcertTlsCertPath) : undefined);
-  const mkcertTlsKeyB64 = getOptionalString('MKCERT_TLS_KEY_B64')
-    ?? (mkcertTlsKeyPath ? readFileAsBase64(mkcertTlsKeyPath) : undefined);
+
+  // Support both direct base64 and file paths for TLS certificates
+  let mkcertTlsCertB64 = getOptionalString('MKCERT_TLS_CERT_B64');
+  let mkcertTlsKeyB64 = getOptionalString('MKCERT_TLS_KEY_B64');
+
+  // If base64 versions aren't set, try reading from file paths
+  if (!mkcertTlsCertB64) {
+    const certPath = getOptionalString('MKCERT_TLS_CERT_PATH');
+    mkcertTlsCertB64 = readFileAsBase64(certPath);
+  }
+  if (!mkcertTlsKeyB64) {
+    const keyPath = getOptionalString('MKCERT_TLS_KEY_PATH');
+    mkcertTlsKeyB64 = readFileAsBase64(keyPath);
+  }
 
   if (keycloakExposureRaw === 'cloudflare-tunnel' && !cloudflareTunnelToken) {
     throw new Error('CLOUDFLARE_TUNNEL_TOKEN is required when KEYCLOAK_EXPOSURE=cloudflare-tunnel.');
   }
 
   if ((mkcertTlsCertB64 && !mkcertTlsKeyB64) || (!mkcertTlsCertB64 && mkcertTlsKeyB64)) {
-    throw new Error('MKCERT_TLS_CERT_B64 and MKCERT_TLS_KEY_B64 must both be provided together.');
+    throw new Error('MKCERT_TLS_CERT_B64 and MKCERT_TLS_KEY_B64 must both be provided together (or both paths must exist).');
   }
 
   return {
     stackName: getOptionalString('CDK_STACK_NAME') ?? 'KeycloakStack',
     account: getOptionalString('AWS_ACCOUNT_ID'),
     region: getOptionalString('AWS_REGION'),
-    clusterName: getOptionalString('EKS_CLUSTER_NAME') ?? 'keycloak-cluster',
+    clusterName: getOptionalString('EKS_CLUSTER_NAME') ?? 'github-eks',
     vpcMaxAzs: parseNumber('VPC_MAX_AZS', 2),
     vpcNatGateways: parseNumber('VPC_NAT_GATEWAYS', 0),
     eksNodeInstanceType: getOptionalString('EKS_NODE_INSTANCE_TYPE') ?? 't3.small',
     eksNodeDesiredSize: parseNumber('EKS_NODE_DESIRED_SIZE', 1),
     eksNodeMinSize: parseNumber('EKS_NODE_MIN_SIZE', 1),
     eksNodeMaxSize: parseNumber('EKS_NODE_MAX_SIZE', 1),
+    eksAdminRoleArns: parseCsv('EKS_ADMIN_ROLE_ARNS'),
     keycloakHostname: getRequiredString('KEYCLOAK_HOSTNAME'),
     keycloakExposure: keycloakExposureRaw,
     keycloakAdminUser: getOptionalString('KEYCLOAK_ADMIN_USER') ?? 'admin',
@@ -159,8 +206,6 @@ export function getEnvironmentConfig(): AppConfig {
     cloudflareTunnelToken,
     mkcertTlsCertB64,
     mkcertTlsKeyB64,
-    mkcertTlsCertPath,
-    mkcertTlsKeyPath,
     dbPassword: getRequiredString('KEYCLOAK_DB_PASSWORD'),
     dbName: getOptionalString('KEYCLOAK_DB_NAME') ?? 'keycloak',
     keycloakReplicas: parseNumber('KEYCLOAK_REPLICAS', 1),

@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import * as eks from 'aws-cdk-lib/aws-eks';
+import * as eks from 'aws-cdk-lib/aws-eks-v2';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
@@ -21,7 +21,7 @@ export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
  */
 export class KeycloakStack extends cdk.Stack {
   /** Exposed for cross-stack use (e.g. deploying additional Helm charts). */
-  public readonly cluster: eks.Cluster;
+  public readonly cluster: eks.ICluster;
 
   constructor(scope: Construct, id: string, props: KeycloakStackProps) {
     super(scope, id, props);
@@ -51,6 +51,7 @@ export class KeycloakStack extends cdk.Stack {
       desiredSize: props.eksNodeDesiredSize,
       minSize: props.eksNodeMinSize,
       maxSize: props.eksNodeMaxSize,
+      adminRoleArns: props.eksAdminRoleArns,
     });
     this.cluster = kubeCluster.cluster;
 
