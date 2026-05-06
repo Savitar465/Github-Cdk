@@ -10,6 +10,8 @@ export interface EcsClusterProps {
     readonly desiredCapacity: number;
     readonly minCapacity: number;
     readonly maxCapacity: number;
+    /** If true, launch EC2 instances in public subnets (gives instances public IPs). Useful when VPC has no NAT gateways. */
+    readonly placeInstancesInPublicSubnets?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ export class EcsCluster extends Construct {
         });
 
         // Add EC2 capacity to the cluster
-        this.autoScalingGroup = this.cluster.addCapacity('Capacity', {
+        const asgOptions: any = {
             instanceType: ec2.InstanceType.of(
                 ec2.InstanceClass.T3,
                 ec2.InstanceSize.SMALL,
@@ -38,7 +40,13 @@ export class EcsCluster extends Construct {
             minCapacity: props.minCapacity,
             desiredCapacity: props.desiredCapacity,
             maxCapacity: props.maxCapacity,
-        });
+        };
+
+        if (props.placeInstancesInPublicSubnets) {
+            asgOptions.vpcSubnets = { subnetType: ec2.SubnetType.PUBLIC };
+        }
+
+        this.autoScalingGroup = this.cluster.addCapacity('Capacity', asgOptions);
     }
 }
 

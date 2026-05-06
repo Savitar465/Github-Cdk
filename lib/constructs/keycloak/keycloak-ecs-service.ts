@@ -38,7 +38,7 @@ export interface KeycloakEcsServiceProps {
  *  - `alb`: Creates an Application Load Balancer for external access
  */
 export class KeycloakEcsService extends Construct {
-  public readonly service: ecs.FargateService;
+  public readonly service: ecs.Ec2Service;
   public readonly loadBalancer?: elbv2.ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props: KeycloakEcsServiceProps) {
@@ -90,42 +90,46 @@ export class KeycloakEcsService extends Construct {
       retention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // Create task definition
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
-      memoryLimitMiB: 2048,
-      cpu: 512,
-    });
+     // Create task definition
+     const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDefinition', {
+       networkMode: ecs.NetworkMode.AWS_VPC,
+     });
 
-    // Add Keycloak container
-    const keycloakContainer = taskDefinition.addContainer('keycloak', {
-      image: ecs.ContainerImage.fromRegistry('quay.io/keycloak/keycloak:26.3.3'),
-      command: ['start'],
-      environment: {
-        KC_BOOTSTRAP_ADMIN_USERNAME: keycloakAdminUser,
-        KC_BOOTSTRAP_ADMIN_PASSWORD: keycloakAdminPassword,
-        KC_HOSTNAME: keycloakHostname,
-        KC_PROXY_HEADERS: 'xforwarded',
-        KC_HTTP_ENABLED: 'true',
-        KC_HOSTNAME_STRICT: 'false',
-        KC_HEALTH_ENABLED: 'true',
-        KC_CACHE: 'local',
-        KC_DB: 'postgres',
-        KC_DB_URL_DATABASE: dbName,
-        KC_DB_URL_HOST: dbHost,
-        KC_DB_USERNAME: 'postgres',
-        KC_DB_PASSWORD: dbPassword,
-      },
-      logging: ecs.LogDriver.awsLogs({
-        logGroup: keycloakLogGroup,
-        streamPrefix: 'keycloak',
-      }),
-      portMappings: [
-        {
-          containerPort: 8080,
-          protocol: ecs.Protocol.TCP,
-        },
-      ],
-    });
+     // Add Keycloak container
+     const keycloakContainer = taskDefinition.addContainer('keycloak', {
+       image: ecs.ContainerImage.fromRegistry('quay.io/keycloak/keycloak:26.3.3'),
+       memoryLimitMiB: 2048,
+       cpu: 1024,
+       command: ['start'],
+       environment: {
+         KC_BOOTSTRAP_ADMIN_USERNAME: keycloakAdminUser,
+         KC_BOOTSTRAP_ADMIN_PASSWORD: keycloakAdminPassword,
+         KC_HOSTNAME: keycloakHostname,
+         KC_PROXY_HEADERS: 'xforwarded',
+         KC_HTTP_ENABLED: 'true',
+         KC_HOSTNAME_STRICT: 'false',
+         KC_HEALTH_ENABLED: 'true',
+         KC_CACHE: 'local',
+         KC_DB: 'postgres',
+         KC_DB_URL_DATABASE: dbName,
+         KC_DB_URL_HOST: dbHost,
+         KC_DB_USERNAME: 'postgres',
+         KC_DB_PASSWORD: dbPassword,
+         // Optimize startup performance
+         KC_TRANSACTION_XA_ENABLED: 'false',
+         KC_METRICS_ENABLED: 'true',
+       },
+       logging: ecs.LogDriver.awsLogs({
+         logGroup: keycloakLogGroup,
+         streamPrefix: 'keycloak',
+       }),
+       portMappings: [
+         {
+           containerPort: 8080,
+           protocol: ecs.Protocol.TCP,
+         },
+       ],
+     });
 
     keycloakContainer.addUlimits({
       name: ecs.UlimitName.NOFILE,
@@ -134,12 +138,13 @@ export class KeycloakEcsService extends Construct {
     });
 
     // Create service
-    this.service = new ecs.FargateService(this, 'Service', {
+    this.service = new ecs.Ec2Service(this, 'Service', {
       cluster,
       taskDefinition,
       desiredCount: replicas,
       assignPublicIp: false,
       securityGroups: [taskSecurityGroup],
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
     });
 
     // Set up the load balancer for external ingress.
@@ -153,19 +158,21 @@ export class KeycloakEcsService extends Construct {
       protocol: elbv2.ApplicationProtocol.HTTP,
     });
 
-    listener.addTargets('KeycloakTargets', {
-      port: 8080,
-      targets: [this.service],
-      healthCheck: {
-        path: '/health/ready',
-        healthyHttpCodes: '200',
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 3,
-        interval: cdk.Duration.seconds(30),
-      },
-    });
+      listener.addTargets('KeycloakTargets', {
+       port: 8080,
+       targets: [this.service],
+       healthCheck: {
+         path: '/health/ready',
+         healthyHttpCodes: '200',
+         healthyThresholdCount: 2,
+         unhealthyThresholdCount: 3,
+         interval: cdk.Duration.seconds(30),
+         timeout: cdk.Duration.seconds(10),
+       },
+       deregistrationDelay: cdk.Duration.seconds(30),
+      });
 
-    new cdk.CfnOutput(this, 'LoadBalancerDns', {
+      new cdk.CfnOutput(this, 'LoadBalancerDns', {
       value: this.loadBalancer.loadBalancerDnsName,
       description: 'Load Balancer DNS name for Keycloak',
     });

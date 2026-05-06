@@ -40,6 +40,8 @@ export class KeycloakStack extends cdk.Stack {
       desiredCapacity: props.ecsDesiredCapacity,
       minCapacity: props.ecsMinCapacity,
       maxCapacity: props.ecsMaxCapacity,
+      // If there are no NAT gateways, place EC2 instances in public subnets
+      placeInstancesInPublicSubnets: props.vpcNatGateways === 0,
     });
     this.cluster = ecsCluster.cluster;
 
