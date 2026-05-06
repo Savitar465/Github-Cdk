@@ -1,27 +1,27 @@
 import * as cdk from 'aws-cdk-lib';
-import * as eks from 'aws-cdk-lib/aws-eks-v2';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
-import { GithubDatabase, GithubVpc, KeycloakManifests, KubeCluster } from '../constructs';
+import { GithubDatabase, GithubVpc, KeycloakEcsService, EcsCluster } from '../constructs';
 
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
 /**
- * Top-level stack for the Keycloak deployment.
+ * Top-level stack for the Keycloak deployment on ECS.
  *
  * This stack is intentionally thin – it only wires together the three
  * reusable constructs:
  *   - {@link GithubVpc} → VPC with public + private subnets
  *   - {@link GithubDatabase} → RDS PostgreSQL
- *   - {@link KeycloakManifests} → Kubernetes resources on EKS
+ *   - {@link KeycloakEcsService} → ECS Fargate service with Keycloak
  *
  * All configuration is driven by {@link EnvironmentConfig}, which keeps
  * environment-specific values out of the stack code.
  */
 export class KeycloakStack extends cdk.Stack {
-  /** Exposed for cross-stack use (e.g. deploying additional Helm charts). */
-  public readonly cluster: eks.ICluster;
+  /** Exposed for cross-stack use (e.g. deploying additional services). */
+  public readonly cluster: ecs.Cluster;
 
   constructor(scope: Construct, id: string, props: KeycloakStackProps) {
     super(scope, id, props);
@@ -32,6 +32,17 @@ export class KeycloakStack extends cdk.Stack {
       natGateways: props.vpcNatGateways,
     });
 
+    // ── ECS Cluster ────────────────────────────────────────────────────────────
+    const ecsCluster = new EcsCluster(this, 'EcsCluster', {
+      vpc: network.vpc,
+      clusterName: props.clusterName,
+      instanceType: props.ecsInstanceType,
+      desiredCapacity: props.ecsDesiredCapacity,
+      minCapacity: props.ecsMinCapacity,
+      maxCapacity: props.ecsMaxCapacity,
+    });
+    this.cluster = ecsCluster.cluster;
+
     // ── Database ──────────────────────────────────────────────────────────────
     const database = new GithubDatabase(this, 'Database', {
       vpc: network.vpc,
@@ -41,41 +52,27 @@ export class KeycloakStack extends cdk.Stack {
       instanceType: props.rdsInstanceType,
       allocatedStorageGb: props.rdsAllocatedStorageGb,
       engineVersion: props.rdsEngineVersion,
+      publiclyAccessible: props.rdsPubliclyAccessible,
     });
 
-    // ── EKS Cluster ───────────────────────────────────────────────────────────
-    const kubeCluster = new KubeCluster(this, 'KubeCluster', {
+    // ── Keycloak on ECS ────────────────────────────────────────────────────────
+    const keycloakService = new KeycloakEcsService(this, 'KeycloakService', {
+      cluster: ecsCluster.cluster,
       vpc: network.vpc,
-      clusterName: props.clusterName,
-      nodeInstanceType: props.eksNodeInstanceType,
-      desiredSize: props.eksNodeDesiredSize,
-      minSize: props.eksNodeMinSize,
-      maxSize: props.eksNodeMaxSize,
-      adminRoleArns: props.eksAdminRoleArns,
-    });
-    this.cluster = kubeCluster.cluster;
-
-    // ── Keycloak on Kubernetes ────────────────────────────────────────────────
-    new KeycloakManifests(this, 'KeycloakManifests', {
-      cluster: this.cluster,
+      dbSecurityGroup: database.securityGroup,
       keycloakHostname: props.keycloakHostname,
-      exposure: props.keycloakExposure,
       keycloakAdminUser: props.keycloakAdminUser,
       keycloakAdminPassword: props.keycloakAdminPassword,
-      cloudflareTunnelToken: props.cloudflareTunnelToken,
-      mkcertTlsCertB64: props.mkcertTlsCertB64,
-      mkcertTlsKeyB64: props.mkcertTlsKeyB64,
       dbHost: database.endpointAddress,
       dbName: props.dbName,
       dbPassword: props.dbPassword,
       replicas: props.keycloakReplicas,
     });
 
-
     // ── CloudFormation Outputs ────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ClusterName', {
       value: this.cluster.clusterName,
-      description: 'EKS cluster name',
+      description: 'ECS cluster name',
       exportName: `${this.stackName}-ClusterName`,
     });
 
@@ -86,10 +83,17 @@ export class KeycloakStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'KeycloakUrl', {
-      value: `https://${props.keycloakHostname}`,
+      value: `http://${props.keycloakHostname}`,
       description: 'Keycloak base URL',
       exportName: `${this.stackName}-KeycloakUrl`,
     });
 
+    if (keycloakService.loadBalancer) {
+      new cdk.CfnOutput(this, 'LoadBalancerDns', {
+        value: keycloakService.loadBalancer.loadBalancerDnsName,
+        description: 'Application Load Balancer DNS name',
+        exportName: `${this.stackName}-LoadBalancerDns`,
+      });
+    }
   }
 }

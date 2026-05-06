@@ -1,2 +1,2 @@
-export * from './eks-cluster';
+export * from './ecs-cluster';
 

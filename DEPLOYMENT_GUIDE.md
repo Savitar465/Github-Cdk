@@ -1,12 +1,12 @@
-# EKS Keycloak Deployment Guide
+# ECS Keycloak Deployment Guide
 
 ## Overview
-This CDK stack deploys a complete Keycloak infrastructure on AWS EKS with:
-- **EKS Cluster**: Using Auto Mode (managed compute) on Kubernetes v1.35
+This CDK stack deploys a complete Keycloak infrastructure on AWS ECS with:
+- **ECS Cluster**: Using EC2-backed capacity
 - **VPC**: 3-tier subnet configuration (Public, Private with NAT, Isolated)
-- **RDS PostgreSQL**: Aurora-compatible database
-- **Keycloak**: Deployed as StatefulSet with clustering via Infinispan
-- **Ingress**: NGINX Ingress Controller (optional, if kubectl provider available)
+- **RDS PostgreSQL**: Aurora-compatible database (public for dev, private for production)
+- **Keycloak**: Deployed as an ECS service
+- **Ingress**: Application Load Balancer (optional)
 - **Exposure**: Ingress or Cloudflare Tunnel
 
 ## Architecture
@@ -20,8 +20,8 @@ This CDK stack deploys a complete Keycloak infrastructure on AWS EKS with:
 │  - Internet Gateway              │  │
 │  - Load Balancer                 │  ▼
 ├─────────────────────────────────┤
-│ Private Subnets (10.0.1.0/24)   │  EKS Nodes
-│ - EKS Auto Mode Nodes            │  (Auto Mode)
+│ Private Subnets (10.0.1.0/24)   │  ECS Tasks
+│ - ECS Service                    │  (EC2-backed)
 │ - NAT Egress to Internet          │
 ├─────────────────────────────────┤
 │ Isolated Subnets (10.0.2.0/24)  │  RDS
@@ -29,30 +29,29 @@ This CDK stack deploys a complete Keycloak infrastructure on AWS EKS with:
 └─────────────────────────────────┘
 ```
 
-### EKS Configuration
-- **Mode**: Auto Mode (managed by AWS)
-- **Kubernetes Version**: 1.35
-- **Compute**: Managed node pools (system + general-purpose)
+### ECS Configuration
+- **Mode**: ECS cluster with EC2 capacity
+- **Compute**: Task definition + service
 - **Networking**: VPC native with security groups
-- **Access Control**: IAM-based (via access entries)
+- **Access Control**: IAM roles for tasks and service
 
 ## Prerequisites
 
 ### AWS Account Requirements
 - **Free Tier Eligible**:
-  - RDS: `db.t3.micro` (12 months free)
+  - RDS: `t4g.micro` (12 months free)
   - EC2: NAT Gateway (partial free)
-  - EKS: Control plane (always free)
+    - ECS: Control plane (always free)
   
 - **Minimal Cost Services**:
-  - EKS Auto Mode compute nodes
+    - ECS EC2 capacity
   - NAT Gateway data transfer
   - Load Balancer (if using Ingress)
 
 ### Local Requirements
 - Node.js 20+ and npm
 - AWS CLI configured with credentials
-- `kubectl` for debugging (optional)
+- AWS ECS / CloudWatch tooling for debugging (optional)
 
 ## Environment Configuration
 
@@ -67,48 +66,39 @@ AWS_REGION=us-east-1
 
 # Stack
 CDK_STACK_NAME=KeycloakStack-prod
-EKS_CLUSTER_NAME=github-eks
+ECS_CLUSTER_NAME=github-ecs
 
 # Network
 VPC_MAX_AZS=2
-VPC_NAT_GATEWAYS=1  # Important: must be ≥ 1 for EKS nodes
+VPC_NAT_GATEWAYS=1  # Set to 0 for cost savings if you don't need NAT access
 
-# EKS Nodes
-EKS_NODE_INSTANCE_TYPE=t3.small
-EKS_NODE_DESIRED_SIZE=1
-EKS_NODE_MIN_SIZE=1
-EKS_NODE_MAX_SIZE=3
+# ECS Capacity
+ECS_INSTANCE_TYPE=t3.small
+ECS_DESIRED_CAPACITY=1
+ECS_MIN_CAPACITY=1
+ECS_MAX_CAPACITY=3
 
 # Keycloak
-KEYCLOAK_HOSTNAME=keycloak.example.com
-KEYCLOAK_EXPOSURE=ingress           # or cloudflare-tunnel
+KEYCLOAK_HOSTNAME=keycloak.example.com  # hostname only; do not include http:// or :port
 KEYCLOAK_ADMIN_USER=admin
 KEYCLOAK_ADMIN_PASSWORD=<secure-password>
 KEYCLOAK_REPLICAS=1
 
-# TLS Certificates (Optional)
-# Either provide base64-encoded values OR file paths:
-MKCERT_TLS_CERT_PATH=./tls/keycloak.example.com.pem
-MKCERT_TLS_KEY_PATH=./tls/keycloak.example.com-key.pem
-
-# Cloudflare (required if KEYCLOAK_EXPOSURE=cloudflare-tunnel)
-CLOUDFLARE_TUNNEL_TOKEN=<tunnel-token>
-
 # Database
 KEYCLOAK_DB_NAME=githubdb
 KEYCLOAK_DB_PASSWORD=<secure-password>
-RDS_INSTANCE_TYPE=db.t3.micro
+RDS_INSTANCE_TYPE=t4g.micro
 RDS_ALLOCATED_STORAGE_GB=20
 RDS_ENGINE_VERSION=17.2
+RDS_PUBLICLY_ACCESSIBLE=true
 RDS_MULTI_AZ=false
 ```
 
 ### Important Notes
-1. **VPC_NAT_GATEWAYS must be ≥ 1**: EKS Auto Mode nodes require Internet egress via NAT
-2. **Free Tier DB Instance**: Use `db.t3.micro` (NOT `db.t3.small` or larger)
-3. **Keycloak Exposure Options**:
-   - `ingress`: Exposes via LoadBalancer (requires Ingress controller)
-   - `cloudflare-tunnel`: Uses Cloudflare tunnel for secure access
+1. **VPC_NAT_GATEWAYS must be ≥ 1**: ECS tasks may require Internet egress via NAT for package pulls and external APIs
+2. **Free Tier DB Instance**: Use `t4g.micro` (NOT `t3.small` or larger)
+3. **Keycloak Exposure**:
+   - Keycloak is exposed via an Application Load Balancer
 
 ## Deployment
 
@@ -135,38 +125,27 @@ aws cloudformation describe-stack-events \
   --stack-name KeycloakStack-prod \
   --region us-east-1
 
-# Check EKS cluster
-aws eks describe-cluster --name github-eks --region us-east-1
+# Check ECS cluster
+aws ecs describe-clusters --clusters github-ecs --region us-east-1
 ```
 
 ## Post-Deployment
 
-### Update kubeconfig
-```bash
-aws eks update-kubeconfig \
-  --name github-eks \
-  --region us-east-1
-```
-
 ### Verify Keycloak Deployment
 ```bash
-# Check pods
-kubectl get pods -n default
-
-# Check services
-kubectl get svc keycloak
+# Describe the ECS service
+aws ecs describe-services --cluster github-ecs --services keycloak --region us-east-1
 
 # View logs
-kubectl logs -f statefulset/keycloak
+aws logs tail /ecs/keycloak --follow --region us-east-1
 ```
 
 ### Access Keycloak
-- **Ingress**: `https://keycloak.example.com`
-- **Cloudflare Tunnel**: Automatically routed via tunnel
+- **Ingress**: `http://keycloak.example.com`
 
 ## Troubleshooting
 
-### EKS Cluster Not Creating
+### ECS Cluster Not Creating
 **Error**: "No 'Private' subnet groups"
 - **Cause**: VPC configured with Isolated subnets only
 - **Fix**: Ensure `subnetConfiguration` includes `PRIVATE_WITH_EGRESS` type
@@ -176,28 +155,28 @@ kubectl logs -f statefulset/keycloak
 
 ### RDS Creation Fails
 **Error**: "Instance size not available for free tier"
-- **Cause**: Using instance type larger than `db.t3.micro`
-- **Fix**: Set `RDS_INSTANCE_TYPE=db.t3.micro`
+- **Cause**: Using instance type larger than `t4g.micro`
+- **Fix**: Set `RDS_INSTANCE_TYPE=t4g.micro`
 
 **Error**: "Invalid rule description"
 - **Cause**: Security group rule description exceeds 256 chars
 - **Fix**: Ensure descriptions are concise
 
-### Keycloak Pod Stuck in Pending
+### Keycloak Service Not Starting
 **Cause**: Insufficient capacity or resource constraints
 **Debug**:
 ```bash
-kubectl describe pod keycloak-0
-kubectl get nodes
+aws ecs describe-services --cluster github-ecs --services keycloak --region us-east-1
+aws logs tail /ecs/keycloak --follow --region us-east-1
 ```
 
 ## Cost Estimation (Free Tier + Minimal)
 
 | Service | Free Tier | Cost/Month |
 |---------|-----------|-----------|
-| EKS Control | ✓ | $0 |
-| EKS Auto Mode Nodes | - | $0.05-0.10/hour |
-| RDS db.t3.micro | ✓ (12mo) | $0 or $35 |
+| ECS Control | ✓ | $0 |
+| ECS EC2 Capacity | - | $0.05-0.10/hour |
+| RDS t4g.micro | ✓ (12mo) | $0 or $35 |
 | NAT Gateway | - | $0.045/hour |
 | Load Balancer | - | $0.16/hour |
 | **Total** | | ~$50-100 |
@@ -205,11 +184,10 @@ kubectl get nodes
 ## Security Recommendations
 
 1. **Secrets Management**: Use AWS Secrets Manager instead of environment variables
-2. **IAM Roles**: Grant minimal permissions to EKS nodes
+2. **IAM Roles**: Grant minimal permissions to ECS task roles
 3. **Network**: Restrict security group ingress to required IPs only
-4. **TLS**: Always use TLS certificates (mkcert, Let's Encrypt, or self-signed)
-5. **Backup**: Enable RDS automated backups
-6. **Monitoring**: Enable CloudWatch logs for EKS control plane
+4. **Backup**: Enable RDS automated backups
+5. **Monitoring**: Enable CloudWatch logs for ECS services
 
 ## Cleanup
 
@@ -219,7 +197,7 @@ npm run cdk destroy --context env=prod
 ```
 
 ⚠️ **Warning**: This will delete:
-- EKS cluster
+- ECS cluster
 - RDS database (check retention settings)
 - VPC and subnets
 - Elastic IPs and NAT gateways
@@ -235,8 +213,7 @@ npm run cdk destroy --context env=prod
 
 ## References
 
-- [AWS EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/eks-auto-mode.html)
+- [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
 - [Keycloak Kubernetes Deployment](https://www.keycloak.org/operator/kubernetes)
 - [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/)
-- [Cloudflare Tunnel Setup](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 

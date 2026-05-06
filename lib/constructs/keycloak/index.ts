@@ -1,2 +1,2 @@
-export * from './keycloak-manifests';
+export * from './keycloak-ecs-service';
 

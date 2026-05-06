@@ -18,12 +18,34 @@ export interface GitHubDatabaseProps {
    * @default false
    */
   readonly multiAz?: boolean;
-  /** RDS instance class (e.g. db.t3.micro) */
+  /** RDS instance class (e.g. db.t4g.micro) */
   readonly instanceType: string;
   /** Initial storage allocation in GiB */
   readonly allocatedStorageGb: number;
   /** PostgreSQL engine version (supported: 15.10, 16.4, 17.2) */
   readonly engineVersion: string;
+  /**
+   * Optional security group to allow ingress from (e.g., ECS tasks).
+   * If not provided, allows ingress from any VPC CIDR.
+   */
+  readonly allowedSecurityGroup?: ec2.ISecurityGroup;
+  /**
+   * Whether the database should be reachable from the public internet.
+   * Intended for local/dev deployments only.
+   */
+  readonly publiclyAccessible?: boolean;
+}
+
+function normalizeRdsInstanceType(instanceType: string): string {
+  const trimmed = instanceType.trim();
+  const bareInstanceType = trimmed.startsWith('db.') ? trimmed.slice(3) : trimmed;
+
+  // Free-plan accounts reject `t3.micro`; use the newer eligible micro size instead.
+  if (bareInstanceType === 't3.micro') {
+    return 't4g.micro';
+  }
+
+  return bareInstanceType;
 }
 
 /**
@@ -48,22 +70,42 @@ export class GithubDatabase extends Construct {
       '17.2': rds.PostgresEngineVersion.VER_17_2,
     };
     const selectedEngineVersion = engineVersionMap[props.engineVersion] ?? rds.PostgresEngineVersion.VER_16_4;
+    const selectedInstanceType = normalizeRdsInstanceType(props.instanceType);
 
-    // Security group – allow EKS nodes (and any VPC traffic) to reach postgres
+    const isPubliclyAccessible = props.publiclyAccessible ?? false;
+
+    // Security group – allow traffic to reach postgres
     this.securityGroup = new ec2.SecurityGroup(this, 'DbSg', {
       vpc: props.vpc,
-      description: 'Allow EKS nodes to reach Keycloak PostgreSQL on 5432',
+      description: 'Allow applications to reach Keycloak PostgreSQL on 5432',
     });
 
-    this.securityGroup.addIngressRule(
-      ec2.Peer.ipv4(props.vpc.vpcCidrBlock),
-      ec2.Port.tcp(5432),
-      'EKS to Postgres',
-    );
+    // Allow ingress from specific security group, the VPC CIDR, or the public internet.
+    if (isPubliclyAccessible) {
+      this.securityGroup.addIngressRule(
+        ec2.Peer.anyIpv4(),
+        ec2.Port.tcp(5432),
+        'Public to Postgres',
+      );
+    } else if (props.allowedSecurityGroup) {
+      this.securityGroup.addIngressRule(
+        ec2.Peer.securityGroupId(props.allowedSecurityGroup.securityGroupId),
+        ec2.Port.tcp(5432),
+        'Application to Postgres',
+      );
+    } else {
+      this.securityGroup.addIngressRule(
+        ec2.Peer.ipv4(props.vpc.vpcCidrBlock),
+        ec2.Port.tcp(5432),
+        'VPC to Postgres',
+      );
+    }
 
     const instance = new rds.DatabaseInstance(this, 'Instance', {
       vpc: props.vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      vpcSubnets: {
+        subnetType: isPubliclyAccessible ? ec2.SubnetType.PUBLIC : ec2.SubnetType.PRIVATE_ISOLATED,
+      },
       securityGroups: [this.securityGroup],
       engine: rds.DatabaseInstanceEngine.postgres({ version: selectedEngineVersion }),
       credentials: rds.Credentials.fromPassword(
@@ -71,13 +113,13 @@ export class GithubDatabase extends Construct {
         cdk.SecretValue.unsafePlainText(props.dbPassword),
       ),
       databaseName: props.dbName,
-      instanceType: new ec2.InstanceType(props.instanceType),
+      instanceType: new ec2.InstanceType(selectedInstanceType),
       allocatedStorage: props.allocatedStorageGb,
       storageEncrypted: true,
       multiAz: props.multiAz ?? false,
       backupRetention: cdk.Duration.days(0),
       deletionProtection: false,
-      publiclyAccessible: false,
+      publiclyAccessible: isPubliclyAccessible,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       deleteAutomatedBackups: true,
     });

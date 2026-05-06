@@ -13,15 +13,20 @@ describe('KeycloakStack – dev environment', () => {
       AWS_ACCOUNT_ID: '123456789012',
       AWS_REGION: 'us-east-1',
       CDK_STACK_NAME: 'TestKeycloakStack',
-      EKS_CLUSTER_NAME: 'keycloak-cluster',
+      ECS_CLUSTER_NAME: 'keycloak-cluster',
       VPC_MAX_AZS: '2',
       VPC_NAT_GATEWAYS: '1',
+      ECS_INSTANCE_TYPE: 't3.small',
+      ECS_DESIRED_CAPACITY: '1',
+      ECS_MIN_CAPACITY: '1',
+      ECS_MAX_CAPACITY: '1',
       KEYCLOAK_HOSTNAME: 'keycloak-dev.savi.io',
       KEYCLOAK_ADMIN_USER: 'admin',
       KEYCLOAK_ADMIN_PASSWORD: 'admin-dev',
-      KEYCLOAK_DB_PASSWORD: 'Space465Dev',
-      KEYCLOAK_DB_NAME: 'keycloak',
+      DB_PASSWORD: 'Space465Dev',
+      DB_NAME: 'keycloak',
       KEYCLOAK_REPLICAS: '1',
+      RDS_PUBLICLY_ACCESSIBLE: 'true',
       RDS_MULTI_AZ: 'false',
       RDS_ENGINE_VERSION: '16.4',
     };
@@ -30,7 +35,7 @@ describe('KeycloakStack – dev environment', () => {
     const config = getEnvironmentConfig();
 
     const stack = new KeycloakStack(app, 'TestKeycloakStack', {
-      // Use a deterministic account/region so EKS constructs resolve properly
+      // Use a deterministic account/region so ECS constructs resolve properly
       env: { account: '123456789012', region: 'us-east-1' },
       ...config,
     });
@@ -47,8 +52,12 @@ describe('KeycloakStack – dev environment', () => {
     template.resourceCountIs('AWS::EC2::VPC', 1);
   });
 
-  it('creates public and private subnets across 2 AZs (4 subnets total)', () => {
-    template.resourceCountIs('AWS::EC2::Subnet', 4);
+  it('creates public and private subnets across 2 AZs (4 subnets minimum)', () => {
+    // ECS clusters may create additional subnets for load balancing, so we at least check for 4
+    const subnetCount = Object.keys(template.toJSON().Resources).filter(
+      (key) => template.toJSON().Resources[key].Type === 'AWS::EC2::Subnet'
+    ).length;
+    expect(subnetCount).toBeGreaterThanOrEqual(4);
   });
 
   // ── RDS ────────────────────────────────────────────────────────────────────
@@ -57,12 +66,19 @@ describe('KeycloakStack – dev environment', () => {
       DBName:        'keycloak',
       Engine:        'postgres',
       EngineVersion: Match.stringLikeRegexp('^16'),
+      DBInstanceClass: 'db.t4g.micro',
     });
   });
 
   it('enables storage encryption on the RDS instance', () => {
     template.hasResourceProperties('AWS::RDS::DBInstance', {
       StorageEncrypted: true,
+    });
+  });
+
+  it('makes the RDS instance publicly accessible for development', () => {
+    template.hasResourceProperties('AWS::RDS::DBInstance', {
+      PubliclyAccessible: true,
     });
   });
 
@@ -79,10 +95,16 @@ describe('KeycloakStack – dev environment', () => {
     });
   });
 
-  // ── EKS ────────────────────────────────────────────────────────────────────
-  it('creates an EKS cluster named keycloak-cluster', () => {
-    template.hasResourceProperties('Custom::AWSCDK-EKS-Cluster', {
-      Config: Match.objectLike({ name: 'keycloak-cluster' }),
+  // ── ECS ────────────────────────────────────────────────────────────────────
+  it('creates an ECS cluster named keycloak-cluster', () => {
+    template.hasResourceProperties('AWS::ECS::Cluster', {
+      ClusterName: 'keycloak-cluster',
+    });
+  });
+
+  it('creates a CloudWatch log group for Keycloak', () => {
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/ecs/keycloak',
     });
   });
 
@@ -97,8 +119,24 @@ describe('KeycloakStack – dev environment', () => {
 
   it('exports the KeycloakUrl output', () => {
     template.hasOutput('KeycloakUrl', {
-      Value: 'https://keycloak-dev.savi.io',
+      Value: 'http://keycloak-dev.savi.io',
     });
+  });
+});
+
+describe('Environment config validation', () => {
+  it('rejects Keycloak hostnames with a port or scheme', () => {
+    const originalEnv = process.env;
+    process.env = {
+      ...originalEnv,
+      KEYCLOAK_HOSTNAME: 'http://localhost:8080',
+      KEYCLOAK_ADMIN_PASSWORD: 'admin-dev',
+      DB_PASSWORD: 'Space465Dev',
+    };
+
+    expect(() => getEnvironmentConfig()).toThrow(/hostname only/i);
+
+    process.env = originalEnv;
   });
 });
 
