@@ -27,8 +27,11 @@ export interface EnvironmentConfig {
   /** Maximum ECS capacity */
   readonly ecsMaxCapacity: number;
 
-  /** Public hostname exposed via the Keycloak Ingress */
-  readonly keycloakHostname: string;
+  /**
+   * Public hostname for Keycloak (no scheme/path/port).
+   * When omitted, the ALB's auto-generated DNS name is used automatically.
+   */
+  readonly keycloakHostname?: string;
   /** Keycloak bootstrap admin username */
   readonly keycloakAdminUser: string;
   /** Keycloak bootstrap admin password ⚠️ use Secrets Manager in production */
@@ -128,7 +131,7 @@ export function getEnvironmentConfig(): AppConfig {
     ecsDesiredCapacity: parseNumber('ECS_DESIRED_CAPACITY', 1),
     ecsMinCapacity: parseNumber('ECS_MIN_CAPACITY', 1),
     ecsMaxCapacity: parseNumber('ECS_MAX_CAPACITY', 1),
-    keycloakHostname: getHostnameOnly('KEYCLOAK_HOSTNAME'),
+    keycloakHostname: getOptionalString('KEYCLOAK_HOSTNAME'),
     keycloakAdminUser: getOptionalString('KEYCLOAK_ADMIN_USER') ?? 'admin',
     keycloakAdminPassword: getRequiredString('KEYCLOAK_ADMIN_PASSWORD'),
     dbPassword: getRequiredString('DB_PASSWORD'),

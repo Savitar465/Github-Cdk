@@ -89,18 +89,10 @@ export class KeycloakStack extends cdk.Stack {
       exportName: `${this.stackName}-DbEndpoint`,
     });
 
-    new cdk.CfnOutput(this, 'KeycloakUrl', {
-      value: `http://${props.keycloakHostname}`,
-      description: 'Keycloak base URL',
-      exportName: `${this.stackName}-KeycloakUrl`,
+    new cdk.CfnOutput(this, 'LoadBalancerDns', {
+      value: keycloakService.loadBalancer.loadBalancerDnsName,
+      description: 'Application Load Balancer DNS name',
+      exportName: `${this.stackName}-LoadBalancerDns`,
     });
-
-    if (keycloakService.loadBalancer) {
-      new cdk.CfnOutput(this, 'LoadBalancerDns', {
-        value: keycloakService.loadBalancer.loadBalancerDnsName,
-        description: 'Application Load Balancer DNS name',
-        exportName: `${this.stackName}-LoadBalancerDns`,
-      });
-    }
   }
 }
