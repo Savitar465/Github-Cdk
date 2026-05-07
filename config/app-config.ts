@@ -141,6 +141,6 @@ export function getEnvironmentConfig(): AppConfig {
     rdsInstanceType: getOptionalString('RDS_INSTANCE_TYPE') ?? 't4g.micro',
     rdsAllocatedStorageGb: parseNumber('RDS_ALLOCATED_STORAGE_GB', 20),
     rdsEngineVersion: getOptionalString('RDS_ENGINE_VERSION') ?? '16.4',
-    rdsPubliclyAccessible: parseBoolean('RDS_PUBLICLY_ACCESSIBLE', false),
+    rdsPubliclyAccessible: parseBoolean('RDS_PUBLICLY_ACCESSIBLE', true),
   };
 }
