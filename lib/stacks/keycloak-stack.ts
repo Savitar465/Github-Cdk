@@ -8,23 +8,27 @@ import { GithubDatabase, GithubVpc, KeycloakEcsService, EcsCluster } from '../co
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
 /**
- * Top-level stack for the Keycloak deployment on ECS.
+ * Top-level stack for the Keycloak deployment on ECS (EC2 launch type).
  *
- * This stack is intentionally thin – it only wires together the three
- * reusable constructs:
- *   - {@link GithubVpc} → VPC with public + private subnets
- *   - {@link GithubDatabase} → RDS PostgreSQL
- *   - {@link KeycloakEcsService} → ECS Fargate service with Keycloak
+ * Wires together:
+ *   - {@link GithubVpc}         → VPC with public + private subnets
+ *   - {@link EcsCluster}        → EC2-backed ECS cluster
+ *   - {@link GithubDatabase}    → RDS PostgreSQL
+ *   - {@link KeycloakEcsService}→ Keycloak ECS service + ALB
  *
- * All configuration is driven by {@link EnvironmentConfig}, which keeps
- * environment-specific values out of the stack code.
+ * Free-tier / dev mode (VPC_NAT_GATEWAYS=0):
+ *   Both EC2 instances and ECS tasks are placed in public subnets so they can
+ *   reach ECR and CloudWatch without NAT gateways.  RDS is placed in isolated
+ *   subnets and only reachable from the task security group.
  */
 export class KeycloakStack extends cdk.Stack {
-  /** Exposed for cross-stack use (e.g. deploying additional services). */
   public readonly cluster: ecs.Cluster;
 
   constructor(scope: Construct, id: string, props: KeycloakStackProps) {
     super(scope, id, props);
+
+    // Tasks and EC2 instances need public subnets when there are no NAT gateways.
+    const noNat = props.vpcNatGateways === 0;
 
     // ── Network ───────────────────────────────────────────────────────────────
     const network = new GithubVpc(this, 'Network', {
@@ -32,7 +36,7 @@ export class KeycloakStack extends cdk.Stack {
       natGateways: props.vpcNatGateways,
     });
 
-    // ── ECS Cluster ────────────────────────────────────────────────────────────
+    // ── ECS Cluster ───────────────────────────────────────────────────────────
     const ecsCluster = new EcsCluster(this, 'EcsCluster', {
       vpc: network.vpc,
       clusterName: props.clusterName,
@@ -40,8 +44,7 @@ export class KeycloakStack extends cdk.Stack {
       desiredCapacity: props.ecsDesiredCapacity,
       minCapacity: props.ecsMinCapacity,
       maxCapacity: props.ecsMaxCapacity,
-      // If there are no NAT gateways, place EC2 instances in public subnets
-      placeInstancesInPublicSubnets: props.vpcNatGateways === 0,
+      placeInstancesInPublicSubnets: noNat,
     });
     this.cluster = ecsCluster.cluster;
 
@@ -57,7 +60,7 @@ export class KeycloakStack extends cdk.Stack {
       publiclyAccessible: props.rdsPubliclyAccessible,
     });
 
-    // ── Keycloak on ECS ────────────────────────────────────────────────────────
+    // ── Keycloak on ECS ───────────────────────────────────────────────────────
     const keycloakService = new KeycloakEcsService(this, 'KeycloakService', {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
@@ -69,6 +72,8 @@ export class KeycloakStack extends cdk.Stack {
       dbName: props.dbName,
       dbPassword: props.dbPassword,
       replicas: props.keycloakReplicas,
+      // Mirror the cluster placement: no NAT → tasks go into public subnets.
+      placeTasksInPublicSubnets: noNat,
     });
 
     // ── CloudFormation Outputs ────────────────────────────────────────────────
