@@ -54,7 +54,7 @@ export interface KeycloakEcsServiceProps {
  *    KC_HOSTNAME so the service is reachable without a custom domain.
  */
 export class KeycloakEcsService extends Construct {
-  public readonly service: ecs.Ec2Service;
+  public readonly service: ecs.FargateService;
   public readonly loadBalancer: elbv2.ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props: KeycloakEcsServiceProps) {
@@ -124,18 +124,16 @@ export class KeycloakEcsService extends Construct {
       retention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // ── Task definition ───────────────────────────────────────────────────────
-    const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDefinition', {
-      networkMode: ecs.NetworkMode.AWS_VPC,
+    // ── Task definition (Fargate) ─────────────────────────────────────────────
+    // 1 vCPU / 2 GB is the smallest Fargate combination that comfortably fits
+    // the Keycloak JVM (heap capped at 768m) plus OS/agent overhead.
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
+      memoryLimitMiB: 2048,
+      cpu: 1024,
     });
 
-    // Keycloak container.
-    // 1400 MiB on a t3.small (2 GiB total) leaves ~400 MiB for the ECS agent
-    // and OS. The JVM heap is capped at 768m so RSS stays well inside the limit.
     const keycloakContainer = taskDefinition.addContainer('keycloak', {
       image: ecs.ContainerImage.fromRegistry('quay.io/keycloak/keycloak:26.3.3'),
-      memoryLimitMiB: 1400,
-      cpu: 512,
       // Override the default entrypoint so we can run kcadm.sh after Keycloak
       // starts to force sslRequired=NONE on the master realm.  The default
       // value (external) blocks all HTTP access and is persisted in RDS, so
@@ -212,34 +210,22 @@ export class KeycloakEcsService extends Construct {
       hardLimit: 2048,
     });
 
-    // ── ECS service ───────────────────────────────────────────────────────────
-    // When there are no NAT gateways the tasks must live in public subnets so
-    // the underlying EC2 instance (which carries a public IP) can reach ECR and CloudWatch.
+    // ── Fargate service ───────────────────────────────────────────────────────
     const vpcSubnets: ec2.SubnetSelection = placeTasksInPublicSubnets
       ? { subnetType: ec2.SubnetType.PUBLIC }
       : { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS };
 
-    this.service = new ecs.Ec2Service(this, 'Service', {
+    this.service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition,
       desiredCount: replicas,
       securityGroups: [taskSecurityGroup],
       vpcSubnets,
-      // Keycloak takes 60-120 s to boot; give it extra room before the ALB
-      // marks it unhealthy and ECS kills the task (exit 143).
-      healthCheckGracePeriod: cdk.Duration.seconds(240),
-      // Stop the deployment after repeated failures and roll back instead of
-      // retrying indefinitely (which hangs `cdk deploy` forever).
+      assignPublicIp: placeTasksInPublicSubnets,
+      // On a fresh database Keycloak runs 100+ Liquibase migrations before
+      // /health/ready returns 200. Give it 8 minutes to be safe.
+      healthCheckGracePeriod: cdk.Duration.seconds(480),
       circuitBreaker: { rollback: true },
-      // On a single small EC2 instance there is not enough RAM to run both
-      // the old and the new task simultaneously during a rolling update.
-      // minHealthyPercent=0 lets ECS drain the old task first, then start the
-      // replacement — at the cost of a brief update-time downtime.
-      // AZ rebalancing must be disabled because it requires maxHealthyPercent>100,
-      // which would again force ECS to try to run two tasks at once.
-      minHealthyPercent: 0,
-      maxHealthyPercent: 100,
-      availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
     });
 
     // ── Listener & targets ────────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as triggers from 'aws-cdk-lib/triggers';
+import * as path from 'path';
 import { Construct } from 'constructs';
 
 export interface GitHubDatabaseProps {
@@ -11,8 +15,13 @@ export interface GitHubDatabaseProps {
    * ⚠️ Use `cdk.SecretValue.secretsManager(...)` in production.
    */
   readonly dbPassword: string;
-  /** Name of the PostgreSQL database */
+  /** Name of the primary PostgreSQL database (created by the RDS instance) */
   readonly dbName: string;
+  /**
+   * Additional database names to create inside the same RDS instance.
+   * Created by a Lambda trigger that runs once at deploy time.
+   */
+  readonly additionalDatabases?: string[];
   /**
    * Enable Multi-AZ standby replica.
    * @default false
@@ -59,6 +68,12 @@ export class GithubDatabase extends Construct {
   public readonly endpointAddress: string;
   /** Security group attached to the RDS instance */
   public readonly securityGroup: ec2.SecurityGroup;
+  /**
+   * The CDK Trigger that creates additional databases.
+   * ECS services should declare a dependency on this so CloudFormation
+   * waits for the databases to exist before starting any containers.
+   */
+  public readonly dbInitTrigger?: triggers.Trigger;
 
 
   constructor(scope: Construct, id: string, props: GitHubDatabaseProps) {
@@ -125,6 +140,60 @@ export class GithubDatabase extends Construct {
     });
 
     this.endpointAddress = instance.instanceEndpoint.hostname;
+
+    // ── Create additional databases via a Lambda trigger ──────────────────────
+    // RDS only creates the primary database at instance launch. Any extra
+    // databases (e.g. one per microservice) are provisioned here at deploy time.
+    const additionalDatabases = props.additionalDatabases ?? [];
+    if (additionalDatabases.length > 0) {
+      const allDatabases = [props.dbName, ...additionalDatabases];
+
+      // Security group allowing the trigger Lambda to reach the RDS instance.
+      // Only needed when the instance is not publicly accessible.
+      const triggerSg = !isPubliclyAccessible
+        ? new ec2.SecurityGroup(this, 'DbInitLambdaSg', {
+            vpc: props.vpc,
+            description: 'Security group for DB init Lambda trigger',
+          })
+        : undefined;
+
+      if (triggerSg) {
+        this.securityGroup.addIngressRule(
+          triggerSg,
+          ec2.Port.tcp(5432),
+          'Allow DB init Lambda to connect',
+        );
+      }
+
+      const dbInitFn = new lambdaNodejs.NodejsFunction(this, 'DbInitFn', {
+        entry: path.join(__dirname, '../../lambda/db-init.ts'),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_20_X,
+        // When publicly accessible the Lambda reaches the RDS via its public
+        // endpoint — no VPC placement needed. Otherwise put it inside the VPC.
+        ...(triggerSg && {
+          vpc: props.vpc,
+          vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+          securityGroups: [triggerSg],
+        }),
+        environment: {
+          DB_HOST: this.endpointAddress,
+          DB_PASSWORD: props.dbPassword,
+          DB_NAMES: allDatabases.join(','),
+        },
+        bundling: {
+          nodeModules: ['pg'],
+        },
+        // 10 retries × 15 s delay + connection/query overhead
+        timeout: cdk.Duration.minutes(5),
+      });
+
+      this.dbInitTrigger = new triggers.Trigger(this, 'DbInitTrigger', {
+        handler: dbInitFn,
+        executeAfter: [instance],
+        invocationType: triggers.InvocationType.REQUEST_RESPONSE,
+      });
+    }
   }
 }
 

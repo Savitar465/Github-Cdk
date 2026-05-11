@@ -1,9 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
-import { GithubDatabase, GithubVpc, KeycloakEcsService, EcsCluster } from '../constructs';
+import { GithubDatabase, GithubVpc, KeycloakEcsService, EcsCluster, UsersEcsService } from '../constructs';
 
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
@@ -22,8 +22,6 @@ export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
  *   subnets and only reachable from the task security group.
  */
 export class KeycloakStack extends cdk.Stack {
-  public readonly cluster: ecs.Cluster;
-
   constructor(scope: Construct, id: string, props: KeycloakStackProps) {
     super(scope, id, props);
 
@@ -40,19 +38,22 @@ export class KeycloakStack extends cdk.Stack {
     const ecsCluster = new EcsCluster(this, 'EcsCluster', {
       vpc: network.vpc,
       clusterName: props.clusterName,
-      instanceType: props.ecsInstanceType,
-      desiredCapacity: props.ecsDesiredCapacity,
-      minCapacity: props.ecsMinCapacity,
-      maxCapacity: props.ecsMaxCapacity,
-      placeInstancesInPublicSubnets: noNat,
     });
-    this.cluster = ecsCluster.cluster;
+    // ── Service Discovery (Cloud Map private DNS namespace) ───────────────────
+    // Services register under github.local so they can reach each other via DNS
+    // (e.g. users.github.local, keycloak.github.local) without leaving the VPC.
+    ecsCluster.cluster.addDefaultCloudMapNamespace({
+      name: 'github.local',
+      type: servicediscovery.NamespaceType.DNS_PRIVATE,
+      vpc: network.vpc,
+    });
 
     // ── Database ──────────────────────────────────────────────────────────────
     const database = new GithubDatabase(this, 'Database', {
       vpc: network.vpc,
       dbPassword: props.dbPassword,
       dbName: props.dbName,
+      additionalDatabases: [props.usersDbName],
       multiAz: props.rdsMultiAz,
       instanceType: props.rdsInstanceType,
       allocatedStorageGb: props.rdsAllocatedStorageGb,
@@ -76,9 +77,39 @@ export class KeycloakStack extends cdk.Stack {
       placeTasksInPublicSubnets: noNat,
     });
 
+    // ── Users microservice ────────────────────────────────────────────────────
+    const usersService = new UsersEcsService(this, 'UsersService', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      placeTasksInPublicSubnets: noNat,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbName: props.usersDbName,
+      dbPassword: props.dbPassword,
+      serverPort: props.usersServerPort,
+      springAppName: props.usersSpringAppName,
+      keycloakIssuerUri: props.keycloakIssuerUri,
+      keycloakJwkSetUri: props.keycloakJwkSetUri,
+      keycloakClientId: props.keycloakClientId,
+      keycloakClientSecret: props.keycloakClientSecret,
+      keycloakAuthGrantType: props.keycloakAuthGrantType,
+      keycloakScope: props.keycloakScope,
+      keycloakServerUrl: props.keycloakServerUrl,
+      keycloakRealm: props.keycloakRealmName,
+      keycloakAdminClient: props.keycloakAdminClient,
+      keycloakAdminClientSecret: props.keycloakAdminClientSecret,
+    });
+
+    // Both services must wait for the DB-init trigger so that the `keycloak`
+    // and `ms-users` databases exist before any container tries to connect.
+    if (database.dbInitTrigger) {
+      keycloakService.service.node.addDependency(database.dbInitTrigger);
+      usersService.service.node.addDependency(database.dbInitTrigger);
+    }
+
     // ── CloudFormation Outputs ────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ClusterName', {
-      value: this.cluster.clusterName,
+      value: ecsCluster.cluster.clusterName,
       description: 'ECS cluster name',
       exportName: `${this.stackName}-ClusterName`,
     });
@@ -93,6 +124,12 @@ export class KeycloakStack extends cdk.Stack {
       value: keycloakService.loadBalancer.loadBalancerDnsName,
       description: 'Application Load Balancer DNS name',
       exportName: `${this.stackName}-LoadBalancerDns`,
+    });
+
+    new cdk.CfnOutput(this, 'UsersServiceDiscoveryDns', {
+      value: 'users.github.local',
+      description: 'DNS name for the users microservice (reachable from within the VPC)',
+      exportName: `${this.stackName}-UsersServiceDiscoveryDns`,
     });
   }
 }

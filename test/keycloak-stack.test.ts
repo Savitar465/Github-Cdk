@@ -24,7 +24,7 @@ describe('KeycloakStack – dev environment', () => {
       KEYCLOAK_ADMIN_USER: 'admin',
       KEYCLOAK_ADMIN_PASSWORD: 'admin-dev',
       DB_PASSWORD: 'Space465Dev',
-      DB_NAME: 'keycloak',
+      KEYCLOAK_DB_NAME: 'keycloak',
       KEYCLOAK_REPLICAS: '1',
       RDS_PUBLICLY_ACCESSIBLE: 'true',
       RDS_MULTI_AZ: 'false',

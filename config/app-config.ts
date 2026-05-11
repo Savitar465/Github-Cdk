@@ -18,14 +18,6 @@ export interface EnvironmentConfig {
   readonly vpcMaxAzs: number;
   /** Number of NAT gateways */
   readonly vpcNatGateways: number;
-  /** Instance type for ECS EC2 capacity (e.g. t3.small) */
-  readonly ecsInstanceType: string;
-  /** Desired ECS capacity */
-  readonly ecsDesiredCapacity: number;
-  /** Minimum ECS capacity */
-  readonly ecsMinCapacity: number;
-  /** Maximum ECS capacity */
-  readonly ecsMaxCapacity: number;
 
   /**
    * Public hostname for Keycloak (no scheme/path/port).
@@ -53,6 +45,34 @@ export interface EnvironmentConfig {
   readonly rdsEngineVersion: string;
   /** Whether the RDS instance should be publicly reachable */
   readonly rdsPubliclyAccessible: boolean;
+
+  // ── Users microservice ────────────────────────────────────────────────────
+  /** Database name for the users microservice (created inside the shared RDS instance) */
+  readonly usersDbName: string;
+  /** Port the Spring Boot users service listens on */
+  readonly usersServerPort: number;
+  /** Spring application name */
+  readonly usersSpringAppName: string;
+  /** Keycloak issuer URI for token validation */
+  readonly keycloakIssuerUri: string;
+  /** Keycloak JWK set URI for token validation */
+  readonly keycloakJwkSetUri: string;
+  /** Keycloak client ID for users-ms */
+  readonly keycloakClientId: string;
+  /** Keycloak client secret for users-ms */
+  readonly keycloakClientSecret: string;
+  /** OAuth2 grant type */
+  readonly keycloakAuthGrantType: string;
+  /** OAuth2 scope */
+  readonly keycloakScope: string;
+  /** Keycloak server URL (for admin operations) */
+  readonly keycloakServerUrl: string;
+  /** Keycloak realm name */
+  readonly keycloakRealmName: string;
+  /** Keycloak admin client ID */
+  readonly keycloakAdminClient: string;
+  /** Keycloak admin client secret */
+  readonly keycloakAdminClientSecret: string;
 }
 
 /** App-level settings that are not consumed directly by stack props. */
@@ -127,20 +147,29 @@ export function getEnvironmentConfig(): AppConfig {
     clusterName: getOptionalString('ECS_CLUSTER_NAME') ?? 'github-ecs',
     vpcMaxAzs: parseNumber('VPC_MAX_AZS', 2),
     vpcNatGateways: parseNumber('VPC_NAT_GATEWAYS', 1),
-    ecsInstanceType: getOptionalString('ECS_INSTANCE_TYPE') ?? 't3.small',
-    ecsDesiredCapacity: parseNumber('ECS_DESIRED_CAPACITY', 1),
-    ecsMinCapacity: parseNumber('ECS_MIN_CAPACITY', 1),
-    ecsMaxCapacity: parseNumber('ECS_MAX_CAPACITY', 1),
     keycloakHostname: getOptionalString('KEYCLOAK_HOSTNAME'),
     keycloakAdminUser: getOptionalString('KEYCLOAK_ADMIN_USER') ?? 'admin',
     keycloakAdminPassword: getRequiredString('KEYCLOAK_ADMIN_PASSWORD'),
     dbPassword: getRequiredString('DB_PASSWORD'),
-    dbName: getOptionalString('DB_NAME') ?? 'keycloak',
+    dbName: getOptionalString('KEYCLOAK_DB_NAME') ?? 'keycloak',
     keycloakReplicas: parseNumber('KEYCLOAK_REPLICAS', 1),
     rdsMultiAz: parseBoolean('RDS_MULTI_AZ', false),
     rdsInstanceType: getOptionalString('RDS_INSTANCE_TYPE') ?? 't4g.micro',
     rdsAllocatedStorageGb: parseNumber('RDS_ALLOCATED_STORAGE_GB', 20),
     rdsEngineVersion: getOptionalString('RDS_ENGINE_VERSION') ?? '16.4',
     rdsPubliclyAccessible: parseBoolean('RDS_PUBLICLY_ACCESSIBLE', true),
+    usersDbName: getOptionalString('USERS_DB_NAME') ?? 'ms-users',
+    usersServerPort: parseNumber('SERVER_PORT', 8081),
+    usersSpringAppName: getOptionalString('SPRING_APPLICATION_NAME') ?? 'users-ms',
+    keycloakIssuerUri: getRequiredString('KEYCLOAK_ISSUER_URI'),
+    keycloakJwkSetUri: getRequiredString('KEYCLOAK_JWK_SET_URI'),
+    keycloakClientId: getRequiredString('KEYCLOAK_CLIENT_ID'),
+    keycloakClientSecret: getRequiredString('KEYCLOAK_CLIENT_SECRET'),
+    keycloakAuthGrantType: getOptionalString('KEYCLOAK_AUTH_GRANT_TYPE') ?? 'client_credentials',
+    keycloakScope: getOptionalString('KEYCLOAK_SCOPE') ?? 'openid',
+    keycloakServerUrl: getRequiredString('KEYCLOAK_SERVER_URL'),
+    keycloakRealmName: getRequiredString('KEYCLOAK_REALM'),
+    keycloakAdminClient: getRequiredString('KEYCLOAK_ADMIN_CLIENT'),
+    keycloakAdminClientSecret: getRequiredString('KEYCLOAK_ADMIN_CLIENT_SECRET'),
   };
 }
