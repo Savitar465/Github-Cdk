@@ -3,7 +3,7 @@ import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
-import { GithubDatabase, GithubVpc, KeycloakEcsService, EcsCluster, UsersEcsService } from '../constructs';
+import { GithubDatabase, MongoDbEcsService, GithubApiGateway, GithubVpc, KeycloakEcsService, EcsCluster, UsersEcsService } from '../constructs';
 
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
@@ -107,6 +107,28 @@ export class KeycloakStack extends cdk.Stack {
       usersService.service.node.addDependency(database.dbInitTrigger);
     }
 
+    // ── MongoDB on ECS ────────────────────────────────────────────────────────
+    // Reachable within the VPC at mongodb.github.local:27017.
+    // MongoDB uses binary TCP — it cannot be routed through HTTP API Gateway.
+    new MongoDbEcsService(this, 'MongoDb', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      mongodbPassword: props.mongodbPassword,
+      mongodbUsername: props.mongodbUsername,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    // ── API Gateway → Cloud Map → users service ───────────────────────────────
+    if (usersService.cloudMapService) {
+      new GithubApiGateway(this, 'ApiGateway', {
+        vpc: network.vpc,
+        cloudMapService: usersService.cloudMapService,
+        usersTaskSecurityGroup: usersService.taskSecurityGroup,
+        serverPort: props.usersServerPort,
+        placeVpcLinkInPublicSubnets: noNat,
+      });
+    }
+
     // ── CloudFormation Outputs ────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ClusterName', {
       value: ecsCluster.cluster.clusterName,
@@ -131,5 +153,12 @@ export class KeycloakStack extends cdk.Stack {
       description: 'DNS name for the users microservice (reachable from within the VPC)',
       exportName: `${this.stackName}-UsersServiceDiscoveryDns`,
     });
+
+    new cdk.CfnOutput(this, 'MongoDbServiceDiscoveryDns', {
+      value: `mongodb.github.local`,
+      description: 'DNS name for MongoDB (reachable from within the VPC on port 27017)',
+      exportName: `${this.stackName}-MongoDbServiceDiscoveryDns`,
+    });
+
   }
 }

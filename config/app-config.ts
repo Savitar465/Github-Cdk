@@ -46,6 +46,12 @@ export interface EnvironmentConfig {
   /** Whether the RDS instance should be publicly reachable */
   readonly rdsPubliclyAccessible: boolean;
 
+  // ── MongoDB (self-managed on ECS) ─────────────────────────────────────────
+  /** Root password for MongoDB ⚠️ use Secrets Manager in production */
+  readonly mongodbPassword: string;
+  /** Root username for MongoDB */
+  readonly mongodbUsername: string;
+
   // ── Users microservice ────────────────────────────────────────────────────
   /** Database name for the users microservice (created inside the shared RDS instance) */
   readonly usersDbName: string;
@@ -128,6 +134,14 @@ function parseBoolean(name: string, defaultValue: boolean): boolean {
   }
 }
 
+function getMinLengthString(name: string, min: number): string {
+  const value = getRequiredString(name);
+  if (value.length < min) {
+    throw new Error(`Environment variable ${name} must be at least ${min} characters long. Received ${value.length} character(s).`);
+  }
+  return value;
+}
+
 function getHostnameOnly(name: string): string {
   const value = getRequiredString(name);
   if (value.includes('://') || value.includes('/') || value.includes(':')) {
@@ -158,6 +172,8 @@ export function getEnvironmentConfig(): AppConfig {
     rdsAllocatedStorageGb: parseNumber('RDS_ALLOCATED_STORAGE_GB', 20),
     rdsEngineVersion: getOptionalString('RDS_ENGINE_VERSION') ?? '16.4',
     rdsPubliclyAccessible: parseBoolean('RDS_PUBLICLY_ACCESSIBLE', true),
+    mongodbPassword: getMinLengthString('MONGODB_PASSWORD', 8),
+    mongodbUsername: getOptionalString('MONGODB_USERNAME') ?? 'mongoadmin',
     usersDbName: getOptionalString('USERS_DB_NAME') ?? 'ms-users',
     usersServerPort: parseNumber('SERVER_PORT', 8081),
     usersSpringAppName: getOptionalString('SPRING_APPLICATION_NAME') ?? 'users-ms',

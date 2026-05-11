@@ -1,6 +1,7 @@
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -35,6 +36,8 @@ export interface UsersEcsServiceProps {
 
 export class UsersEcsService extends Construct {
   public readonly service: ecs.FargateService;
+  public readonly taskSecurityGroup: ec2.SecurityGroup;
+  public readonly cloudMapService: servicediscovery.IService | undefined;
 
   constructor(scope: Construct, id: string, props: UsersEcsServiceProps) {
     super(scope, id);
@@ -145,5 +148,8 @@ export class UsersEcsService extends Construct {
         name: 'users',
       },
     });
+
+    this.taskSecurityGroup = taskSecurityGroup;
+    this.cloudMapService = this.service.cloudMapService;
   }
 }
