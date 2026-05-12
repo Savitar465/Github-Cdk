@@ -89,6 +89,15 @@ export interface EnvironmentConfig {
   // ── Frontend (Next.js) ────────────────────────────────────────────────────
   readonly frontFilesApiUrl: string;
   readonly frontUsersApiUrl: string;
+  readonly frontRepositoryApiUrl: string;
+  readonly frontPrApiUrl: string;
+  readonly frontOrgApiUrl: string;
+  readonly frontIssuesApiUrl: string;
+  readonly frontUseKeycloak: boolean;
+  readonly frontUseMockAuth: boolean;
+  readonly frontGitHttpUrl: string;
+  readonly frontGitSshHost: string;
+  readonly frontGitSshPort: number;
 
   // ── Files microservice ────────────────────────────────────────────────────
   readonly filesServerPort: number;
@@ -259,6 +268,15 @@ export function getEnvironmentConfig(): AppConfig {
     orgJwtJwkSetUri: getRequiredString('ORG_JWT_JWK_SET_URI'),
     frontFilesApiUrl: getOptionalString('NEXT_PUBLIC_FILES_API_URL') ?? 'http://files-ms.github.local:8083/api',
     frontUsersApiUrl: getOptionalString('NEXT_PUBLIC_USERS_API_URL') ?? 'http://users.github.local:8081',
+    frontRepositoryApiUrl: getOptionalString('NEXT_PUBLIC_REPOSITORY_API_URL') ?? 'http://repository-ms.github.local:8090',
+    frontPrApiUrl: getOptionalString('NEXT_PUBLIC_PR_API_URL') ?? 'http://pullrequest-ms.github.local:8084/api',
+    frontOrgApiUrl: getOptionalString('NEXT_PUBLIC_ORG_API_URL') ?? 'http://organization-ms.github.local:8085',
+    frontIssuesApiUrl: getOptionalString('NEXT_PUBLIC_ISSUES_API_URL') ?? 'http://localhost:8091',
+    frontUseKeycloak: parseBoolean('NEXT_PUBLIC_USE_KEYCLOAK', false),
+    frontUseMockAuth: parseBoolean('NEXT_PUBLIC_USE_MOCK_AUTH', false),
+    frontGitHttpUrl: getOptionalString('NEXT_PUBLIC_GIT_HTTP_URL') ?? 'http://repository-ms.github.local:8090',
+    frontGitSshHost: getOptionalString('NEXT_PUBLIC_GIT_SSH_HOST') ?? 'repository-ms.github.local',
+    frontGitSshPort: parseNumber('NEXT_PUBLIC_GIT_SSH_PORT', 2222),
     filesServerPort: parseNumber('FILES_SERVER_PORT', 8083),
     filesDbName: getOptionalString('FILES_DB_NAME') ?? 'github_files',
     filesDbPort: parseNumber('FILES_DB_PORT', 5432),

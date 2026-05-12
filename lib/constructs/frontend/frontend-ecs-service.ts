@@ -8,13 +8,22 @@ import { Construct } from 'constructs';
 export interface FrontendEcsServiceProps {
   readonly cluster: ecs.Cluster;
   readonly vpc: ec2.IVpc;
-  /** Public URL of the files microservice exposed to the browser. */
   readonly filesApiUrl: string;
-  /** Public URL of the users microservice exposed to the browser. */
   readonly usersApiUrl: string;
-  /** Public URL of the repository microservice exposed to the browser. */
   readonly repositoryApiUrl: string;
-  /** Port the container listens on. @default 80 */
+  readonly prApiUrl: string;
+  readonly orgApiUrl: string;
+  readonly issuesApiUrl: string;
+  /** Full URL to the Keycloak instance (e.g. http://<alb-dns>). */
+  readonly keycloakUrl: string;
+  readonly keycloakRealm: string;
+  readonly keycloakClientId: string;
+  readonly useKeycloak: boolean;
+  readonly useMockAuth: boolean;
+  readonly gitHttpUrl: string;
+  readonly gitSshHost: string;
+  readonly gitSshPort: number;
+  /** Port the container listens on. @default 3000 */
   readonly containerPort?: number;
   /** @default 512 */
   readonly memoryLimitMiB?: number;
@@ -44,7 +53,18 @@ export class FrontendEcsService extends Construct {
       filesApiUrl,
       usersApiUrl,
       repositoryApiUrl,
-      containerPort = 80,
+      prApiUrl,
+      orgApiUrl,
+      issuesApiUrl,
+      keycloakUrl,
+      keycloakRealm,
+      keycloakClientId,
+      useKeycloak,
+      useMockAuth,
+      gitHttpUrl,
+      gitSshHost,
+      gitSshPort,
+      containerPort = 3000,
       memoryLimitMiB = 512,
       cpu = 256,
       desiredCount = 1,
@@ -88,9 +108,23 @@ export class FrontendEcsService extends Construct {
       image: ecs.ContainerImage.fromRegistry('cfulano/github-front:latest'),
       portMappings: [{ containerPort, protocol: ecs.Protocol.TCP }],
       environment: {
+        NODE_ENV: 'production',
+        HOSTNAME: '0.0.0.0',
+        PORT: String(containerPort),
         NEXT_PUBLIC_FILES_API_URL: filesApiUrl,
         NEXT_PUBLIC_USERS_API_URL: usersApiUrl,
         NEXT_PUBLIC_REPOSITORY_API_URL: repositoryApiUrl,
+        NEXT_PUBLIC_PR_API_URL: prApiUrl,
+        NEXT_PUBLIC_ORG_API_URL: orgApiUrl,
+        NEXT_PUBLIC_ISSUES_API_URL: issuesApiUrl,
+        NEXT_PUBLIC_KEYCLOAK_URL: keycloakUrl,
+        NEXT_PUBLIC_KEYCLOAK_REALM: keycloakRealm,
+        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: keycloakClientId,
+        NEXT_PUBLIC_USE_KEYCLOAK: String(useKeycloak),
+        NEXT_PUBLIC_USE_MOCK_AUTH: String(useMockAuth),
+        NEXT_PUBLIC_GIT_HTTP_URL: gitHttpUrl,
+        NEXT_PUBLIC_GIT_SSH_HOST: gitSshHost,
+        NEXT_PUBLIC_GIT_SSH_PORT: String(gitSshPort),
       },
       logging: ecs.LogDriver.awsLogs({
         logGroup,
@@ -119,6 +153,7 @@ export class FrontendEcsService extends Construct {
 
     listener.addTargets('FrontendTargets', {
       port: containerPort,
+      protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [this.service],
       healthCheck: {
         path: '/',

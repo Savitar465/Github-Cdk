@@ -67,7 +67,10 @@ export class KeycloakStack extends cdk.Stack {
       vpc: network.vpc,
       dbPassword: props.dbPassword,
       dbName: props.dbName,
-      additionalDatabases: [props.usersDbName, props.filesDbName, props.prDbName, props.orgDbName],
+      additionalDatabases: [
+        props.usersDbName, props.filesDbName, props.prDbName, props.orgDbName,
+        props.prDbName,
+      ],
       multiAz: props.rdsMultiAz,
       instanceType: props.rdsInstanceType,
       allocatedStorageGb: props.rdsAllocatedStorageGb,
@@ -168,45 +171,45 @@ export class KeycloakStack extends cdk.Stack {
 
     // ── Files microservice ────────────────────────────────────────────────────
     // Connects to PostgreSQL. Reachable at files-ms.github.local:8083.
-    const filesService = new FilesMsEcsService(this, 'FilesMs', {
-      cluster: ecsCluster.cluster,
-      vpc: network.vpc,
-      dbSecurityGroup: database.securityGroup,
-      dbHost: database.endpointAddress,
-      dbPort: props.filesDbPort,
-      dbName: props.filesDbName,
-      dbUsername: props.filesDbUsername,
-      dbPassword: props.filesDbPassword,
-      jwtIssuerUri: props.filesJwtIssuerUri,
-      oauth2Enabled: props.filesOauth2Enabled,
-      serverPort: props.filesServerPort,
-      placeTasksInPublicSubnets: noNat,
-    });
+    // const filesService = new FilesMsEcsService(this, 'FilesMs', {
+    //   cluster: ecsCluster.cluster,
+    //   vpc: network.vpc,
+    //   dbSecurityGroup: database.securityGroup,
+    //   dbHost: database.endpointAddress,
+    //   dbPort: props.filesDbPort,
+    //   dbName: props.filesDbName,
+    //   dbUsername: props.filesDbUsername,
+    //   dbPassword: props.filesDbPassword,
+    //   jwtIssuerUri: props.filesJwtIssuerUri,
+    //   oauth2Enabled: props.filesOauth2Enabled,
+    //   serverPort: props.filesServerPort,
+    //   placeTasksInPublicSubnets: noNat,
+    // });
 
     // ── Pull-request microservice ─────────────────────────────────────────────
     // Connects to PostgreSQL. Reachable at pullrequest-ms.github.local:8084.
-    const pullRequestService = new PullRequestMsEcsService(this, 'PullRequestMs', {
-      cluster: ecsCluster.cluster,
-      vpc: network.vpc,
-      dbSecurityGroup: database.securityGroup,
-      dbHost: database.endpointAddress,
-      dbPort: props.prDbPort,
-      dbName: props.prDbName,
-      dbUsername: props.prDbUsername,
-      dbPassword: props.prDbPassword,
-      jwtIssuerUri: props.prJwtIssuerUri,
-      oauth2Enabled: props.prOauth2Enabled,
-      springProfilesActive: props.prSpringProfilesActive,
-      serverPort: props.prServerPort,
-      placeTasksInPublicSubnets: noNat,
-    });
+    // const pullRequestService = new PullRequestMsEcsService(this, 'PullRequestMs', {
+    //   cluster: ecsCluster.cluster,
+    //   vpc: network.vpc,
+    //   dbSecurityGroup: database.securityGroup,
+    //   dbHost: database.endpointAddress,
+    //   dbPort: props.prDbPort,
+    //   dbName: props.prDbName,
+    //   dbUsername: props.prDbUsername,
+    //   dbPassword: props.prDbPassword,
+    //   jwtIssuerUri: props.prJwtIssuerUri,
+    //   oauth2Enabled: props.prOauth2Enabled,
+    //   springProfilesActive: props.prSpringProfilesActive,
+    //   serverPort: props.prServerPort,
+    //   placeTasksInPublicSubnets: noNat,
+    // });
 
     // files-ms and pullrequest-ms must wait for the DB-init trigger so their
     // databases exist before the containers try to connect.
-    if (database.dbInitTrigger) {
-      filesService.service.node.addDependency(database.dbInitTrigger);
-      pullRequestService.service.node.addDependency(database.dbInitTrigger);
-    }
+    // if (database.dbInitTrigger) {
+    //   filesService.service.node.addDependency(database.dbInitTrigger);
+    //   pullRequestService.service.node.addDependency(database.dbInitTrigger);
+    // }
 
     // ── Organizations microservice ────────────────────────────────────────────
     // Connects to PostgreSQL. Reachable at organizations-ms.github.local:8085.
@@ -236,7 +239,18 @@ export class KeycloakStack extends cdk.Stack {
       vpc: network.vpc,
       filesApiUrl: props.frontFilesApiUrl,
       usersApiUrl: props.frontUsersApiUrl,
-      repositoryApiUrl: `http://${repositoryService.loadBalancer.loadBalancerDnsName}`,
+      repositoryApiUrl: props.frontRepositoryApiUrl,
+      prApiUrl: props.frontPrApiUrl,
+      orgApiUrl: props.frontOrgApiUrl,
+      issuesApiUrl: props.frontIssuesApiUrl,
+      keycloakUrl: `http://${keycloakService.loadBalancer.loadBalancerDnsName}`,
+      keycloakRealm: props.keycloakRealmName,
+      keycloakClientId: props.keycloakClientId,
+      useKeycloak: props.frontUseKeycloak,
+      useMockAuth: props.frontUseMockAuth,
+      gitHttpUrl: props.frontGitHttpUrl,
+      gitSshHost: props.frontGitSshHost,
+      gitSshPort: props.frontGitSshPort,
       placeTasksInPublicSubnets: noNat,
     });
 
@@ -312,17 +326,17 @@ export class KeycloakStack extends cdk.Stack {
       exportName: `${this.stackName}-RepositoryMsServiceDiscoveryDns`,
     });
 
-    new cdk.CfnOutput(this, 'FilesMsServiceDiscoveryDns', {
-      value: 'files-ms.github.local',
-      description: 'DNS name for the files microservice (reachable from within the VPC on port 8083)',
-      exportName: `${this.stackName}-FilesMsServiceDiscoveryDns`,
-    });
+    // new cdk.CfnOutput(this, 'FilesMsServiceDiscoveryDns', {
+    //   value: 'files-ms.github.local',
+    //   description: 'DNS name for the files microservice (reachable from within the VPC on port 8083)',
+    //   exportName: `${this.stackName}-FilesMsServiceDiscoveryDns`,
+    // });
 
-    new cdk.CfnOutput(this, 'PullRequestMsServiceDiscoveryDns', {
-      value: 'pullrequest-ms.github.local',
-      description: 'DNS name for the pull-request microservice (reachable from within the VPC on port 8084)',
-      exportName: `${this.stackName}-PullRequestMsServiceDiscoveryDns`,
-    });
+    // new cdk.CfnOutput(this, 'PullRequestMsServiceDiscoveryDns', {
+    //   value: 'pullrequest-ms.github.local',
+    //   description: 'DNS name for the pull-request microservice (reachable from within the VPC on port 8084)',
+    //   exportName: `${this.stackName}-PullRequestMsServiceDiscoveryDns`,
+    // });
 
   }
 }
