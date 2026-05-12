@@ -3,7 +3,21 @@ import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
-import { GithubDatabase, MongoDbEcsService, GithubApiGateway, GithubVpc, KeycloakEcsService, EcsCluster, UsersEcsService } from '../constructs';
+import {
+  EcsCluster,
+  FilesMsEcsService,
+  FrontendEcsService,
+  GitServerEcsService,
+  GithubApiGateway,
+  GithubDatabase,
+  GithubVpc,
+  KeycloakEcsService,
+  MongoDbEcsService,
+  OrganizationsMsEcsService,
+  PullRequestMsEcsService,
+  RepositoryMsEcsService,
+  UsersEcsService,
+} from '../constructs';
 
 export interface KeycloakStackProps extends cdk.StackProps, EnvironmentConfig {}
 
@@ -53,7 +67,7 @@ export class KeycloakStack extends cdk.Stack {
       vpc: network.vpc,
       dbPassword: props.dbPassword,
       dbName: props.dbName,
-      additionalDatabases: [props.usersDbName],
+      additionalDatabases: [props.usersDbName, props.filesDbName, props.prDbName, props.orgDbName],
       multiAz: props.rdsMultiAz,
       instanceType: props.rdsInstanceType,
       allocatedStorageGb: props.rdsAllocatedStorageGb,
@@ -118,6 +132,114 @@ export class KeycloakStack extends cdk.Stack {
       placeTasksInPublicSubnets: noNat,
     });
 
+    // ── Git SSH/HTTP server ───────────────────────────────────────────────────
+    // Reachable within the VPC at git-server.github.local:9080.
+    new GitServerEcsService(this, 'GitServer', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      microserviceUrl: props.gitServerMicroserviceUrl,
+      microserviceAuthToken: props.gitServerMicroserviceAuthToken,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    // ── Repository microservice ───────────────────────────────────────────────
+    // Connects to MongoDB. Reachable publicly via ALB and internally at repository-ms.github.local:8090.
+    const repositoryService = new RepositoryMsEcsService(this, 'RepositoryMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      mongoHost: props.repoMongoHost,
+      mongoPort: props.repoMongoPort,
+      mongoDatabase: props.repoMongoDatabase,
+      mongoUsername: props.repoMongoUsername,
+      mongoPassword: props.repoMongoPassword,
+      mongoAuthDatabase: props.repoMongoAuthDatabase,
+      serverPort: props.repoServerPort,
+      gitServerHttpUrl: props.repoGitServerHttpUrl,
+      gitServerSshHost: props.repoGitServerSshHost,
+      gitServerSshPort: props.repoGitServerSshPort,
+      microserviceAuthToken: props.repoMicroserviceAuthToken,
+      jwtIssuerUri: props.repoJwtIssuerUri,
+      jwtJwkSetUri: props.repoJwtJwkSetUri,
+      keycloakHost: props.repoKeycloakHost,
+      keycloakPort: props.repoKeycloakPort,
+      keycloakRealm: props.repoKeycloakRealm,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    // ── Files microservice ────────────────────────────────────────────────────
+    // Connects to PostgreSQL. Reachable at files-ms.github.local:8083.
+    const filesService = new FilesMsEcsService(this, 'FilesMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbPort: props.filesDbPort,
+      dbName: props.filesDbName,
+      dbUsername: props.filesDbUsername,
+      dbPassword: props.filesDbPassword,
+      jwtIssuerUri: props.filesJwtIssuerUri,
+      oauth2Enabled: props.filesOauth2Enabled,
+      serverPort: props.filesServerPort,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    // ── Pull-request microservice ─────────────────────────────────────────────
+    // Connects to PostgreSQL. Reachable at pullrequest-ms.github.local:8084.
+    const pullRequestService = new PullRequestMsEcsService(this, 'PullRequestMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbPort: props.prDbPort,
+      dbName: props.prDbName,
+      dbUsername: props.prDbUsername,
+      dbPassword: props.prDbPassword,
+      jwtIssuerUri: props.prJwtIssuerUri,
+      oauth2Enabled: props.prOauth2Enabled,
+      springProfilesActive: props.prSpringProfilesActive,
+      serverPort: props.prServerPort,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    // files-ms and pullrequest-ms must wait for the DB-init trigger so their
+    // databases exist before the containers try to connect.
+    if (database.dbInitTrigger) {
+      filesService.service.node.addDependency(database.dbInitTrigger);
+      pullRequestService.service.node.addDependency(database.dbInitTrigger);
+    }
+
+    // ── Organizations microservice ────────────────────────────────────────────
+    // Connects to PostgreSQL. Reachable at organizations-ms.github.local:8085.
+    const orgService = new OrganizationsMsEcsService(this, 'OrganizationsMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbPort: props.orgDbPort,
+      dbName: props.orgDbName,
+      dbUsername: props.orgDbUsername,
+      dbPassword: props.orgDbPassword,
+      sslCertPath: props.orgSslCertPath,
+      jwtIssuerUri: props.orgJwtIssuerUri,
+      jwtJwkSetUri: props.orgJwtJwkSetUri,
+      serverPort: props.orgServerPort,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    if (database.dbInitTrigger) {
+      orgService.service.node.addDependency(database.dbInitTrigger);
+    }
+
+    // ── Frontend (public ALB) ─────────────────────────────────────────────────
+    const frontendService = new FrontendEcsService(this, 'Frontend', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      filesApiUrl: props.frontFilesApiUrl,
+      usersApiUrl: props.frontUsersApiUrl,
+      repositoryApiUrl: `http://${repositoryService.loadBalancer.loadBalancerDnsName}`,
+      placeTasksInPublicSubnets: noNat,
+    });
+
     // ── API Gateway → Cloud Map → users service ───────────────────────────────
     if (usersService.cloudMapService) {
       new GithubApiGateway(this, 'ApiGateway', {
@@ -158,6 +280,48 @@ export class KeycloakStack extends cdk.Stack {
       value: `mongodb.github.local`,
       description: 'DNS name for MongoDB (reachable from within the VPC on port 27017)',
       exportName: `${this.stackName}-MongoDbServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'OrganizationsMsServiceDiscoveryDns', {
+      value: 'organizations-ms.github.local',
+      description: 'DNS name for the organizations microservice (reachable from within the VPC on port 8085)',
+      exportName: `${this.stackName}-OrganizationsMsServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'FrontendUrl', {
+      value: `http://${frontendService.loadBalancer.loadBalancerDnsName}`,
+      description: 'Public URL for the frontend application',
+      exportName: `${this.stackName}-FrontendUrl`,
+    });
+
+    new cdk.CfnOutput(this, 'GitServerServiceDiscoveryDns', {
+      value: 'git-server.github.local',
+      description: 'DNS name for the Git SSH/HTTP server (reachable from within the VPC on port 9080)',
+      exportName: `${this.stackName}-GitServerServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'RepositoryMsUrl', {
+      value: `http://${repositoryService.loadBalancer.loadBalancerDnsName}`,
+      description: 'Public URL for the repository microservice',
+      exportName: `${this.stackName}-RepositoryMsUrl`,
+    });
+
+    new cdk.CfnOutput(this, 'RepositoryMsServiceDiscoveryDns', {
+      value: 'repository-ms.github.local',
+      description: 'DNS name for the repository microservice (reachable from within the VPC on port 8090)',
+      exportName: `${this.stackName}-RepositoryMsServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'FilesMsServiceDiscoveryDns', {
+      value: 'files-ms.github.local',
+      description: 'DNS name for the files microservice (reachable from within the VPC on port 8083)',
+      exportName: `${this.stackName}-FilesMsServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'PullRequestMsServiceDiscoveryDns', {
+      value: 'pullrequest-ms.github.local',
+      description: 'DNS name for the pull-request microservice (reachable from within the VPC on port 8084)',
+      exportName: `${this.stackName}-PullRequestMsServiceDiscoveryDns`,
     });
 
   }
