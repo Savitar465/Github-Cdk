@@ -3,6 +3,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 export interface FrontendEcsServiceProps {
@@ -33,6 +34,8 @@ export interface FrontendEcsServiceProps {
   readonly desiredCount?: number;
   /** When true tasks get a public IP (required when there is no NAT gateway). */
   readonly placeTasksInPublicSubnets?: boolean;
+  /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
+  readonly dockerHubSecret?: secretsmanager.ISecret;
 }
 
 /**
@@ -69,6 +72,7 @@ export class FrontendEcsService extends Construct {
       cpu = 256,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
+      dockerHubSecret,
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -105,7 +109,7 @@ export class FrontendEcsService extends Construct {
     });
 
     taskDefinition.addContainer('frontend', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/github-front:latest'),
+      image: ecs.ContainerImage.fromRegistry('cfulano/github-front:latest', { credentials: dockerHubSecret }),
       portMappings: [{ containerPort, protocol: ecs.Protocol.TCP }],
       environment: {
         NODE_ENV: 'production',

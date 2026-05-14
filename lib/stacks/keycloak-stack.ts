@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
@@ -8,9 +9,9 @@ import {
   FilesMsEcsService,
   FrontendEcsService,
   GitServerEcsService,
-  GithubApiGateway,
   GithubDatabase,
   GithubVpc,
+  IssuesMsEcsService,
   KeycloakEcsService,
   MongoDbEcsService,
   OrganizationsMsEcsService,
@@ -42,6 +43,11 @@ export class KeycloakStack extends cdk.Stack {
     // Tasks and EC2 instances need public subnets when there are no NAT gateways.
     const noNat = props.vpcNatGateways === 0;
 
+    // ── Docker Hub pull credentials ───────────────────────────────────────────
+    const dockerHubSecret = props.dockerhubSecretName
+      ? secretsmanager.Secret.fromSecretNameV2(this, 'DockerHubSecret', props.dockerhubSecretName)
+      : undefined;
+
     // ── Network ───────────────────────────────────────────────────────────────
     const network = new GithubVpc(this, 'Network', {
       maxAzs: props.vpcMaxAzs,
@@ -69,7 +75,7 @@ export class KeycloakStack extends cdk.Stack {
       dbName: props.dbName,
       additionalDatabases: [
         props.usersDbName, props.filesDbName, props.prDbName, props.orgDbName,
-        props.prDbName,
+        props.issuesDbName, props.issuesDbName
       ],
       multiAz: props.rdsMultiAz,
       instanceType: props.rdsInstanceType,
@@ -99,6 +105,7 @@ export class KeycloakStack extends cdk.Stack {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
       placeTasksInPublicSubnets: noNat,
+      dockerHubSecret,
       dbSecurityGroup: database.securityGroup,
       dbHost: database.endpointAddress,
       dbName: props.usersDbName,
@@ -133,6 +140,7 @@ export class KeycloakStack extends cdk.Stack {
       mongodbPassword: props.mongodbPassword,
       mongodbUsername: props.mongodbUsername,
       placeTasksInPublicSubnets: noNat,
+      dockerHubSecret,
     });
 
     // ── Git SSH/HTTP server ───────────────────────────────────────────────────
@@ -143,6 +151,7 @@ export class KeycloakStack extends cdk.Stack {
       microserviceUrl: props.gitServerMicroserviceUrl,
       microserviceAuthToken: props.gitServerMicroserviceAuthToken,
       placeTasksInPublicSubnets: noNat,
+      dockerHubSecret,
     });
 
     // ── Repository microservice ───────────────────────────────────────────────
@@ -150,6 +159,7 @@ export class KeycloakStack extends cdk.Stack {
     const repositoryService = new RepositoryMsEcsService(this, 'RepositoryMs', {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
+      dockerHubSecret,
       mongoHost: props.repoMongoHost,
       mongoPort: props.repoMongoPort,
       mongoDatabase: props.repoMongoDatabase,
@@ -188,34 +198,36 @@ export class KeycloakStack extends cdk.Stack {
 
     // ── Pull-request microservice ─────────────────────────────────────────────
     // Connects to PostgreSQL. Reachable at pullrequest-ms.github.local:8084.
-    // const pullRequestService = new PullRequestMsEcsService(this, 'PullRequestMs', {
-    //   cluster: ecsCluster.cluster,
-    //   vpc: network.vpc,
-    //   dbSecurityGroup: database.securityGroup,
-    //   dbHost: database.endpointAddress,
-    //   dbPort: props.prDbPort,
-    //   dbName: props.prDbName,
-    //   dbUsername: props.prDbUsername,
-    //   dbPassword: props.prDbPassword,
-    //   jwtIssuerUri: props.prJwtIssuerUri,
-    //   oauth2Enabled: props.prOauth2Enabled,
-    //   springProfilesActive: props.prSpringProfilesActive,
-    //   serverPort: props.prServerPort,
-    //   placeTasksInPublicSubnets: noNat,
-    // });
+    const pullRequestService = new PullRequestMsEcsService(this, 'PullRequestMsV3', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      dockerHubSecret,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbPort: props.prDbPort,
+      dbName: props.prDbName,
+      dbUsername: props.prDbUsername,
+      dbPassword: props.prDbPassword,
+      jwtIssuerUri: props.prJwtIssuerUri,
+      oauth2Enabled: props.prOauth2Enabled,
+      springProfilesActive: props.prSpringProfilesActive,
+      serverPort: props.prServerPort,
+      repositoryMsUrl: props.prRepositoryMsUrl,
+      placeTasksInPublicSubnets: noNat,
+      logGroupName: '/ecs/pullrequest-ms-v3',
+      cloudMapName: 'pullrequest-ms',
+    });
 
-    // files-ms and pullrequest-ms must wait for the DB-init trigger so their
-    // databases exist before the containers try to connect.
-    // if (database.dbInitTrigger) {
-    //   filesService.service.node.addDependency(database.dbInitTrigger);
-    //   pullRequestService.service.node.addDependency(database.dbInitTrigger);
-    // }
+    if (database.dbInitTrigger) {
+      pullRequestService.service.node.addDependency(database.dbInitTrigger);
+    }
 
     // ── Organizations microservice ────────────────────────────────────────────
     // Connects to PostgreSQL. Reachable at organizations-ms.github.local:8085.
     const orgService = new OrganizationsMsEcsService(this, 'OrganizationsMs', {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
+      dockerHubSecret,
       dbSecurityGroup: database.securityGroup,
       dbHost: database.endpointAddress,
       dbPort: props.orgDbPort,
@@ -233,10 +245,35 @@ export class KeycloakStack extends cdk.Stack {
       orgService.service.node.addDependency(database.dbInitTrigger);
     }
 
+    // ── Issues microservice ───────────────────────────────────────────────────
+    // Connects to PostgreSQL. Reachable at issues-ms.github.local:8091.
+    const issuesService = new IssuesMsEcsService(this, 'IssuesMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      dockerHubSecret,
+      dbSecurityGroup: database.securityGroup,
+      dbHost: database.endpointAddress,
+      dbPort: props.issuesDbPort,
+      dbName: props.issuesDbName,
+      dbUsername: props.issuesDbUsername,
+      dbPassword: props.issuesDbPassword,
+      sslCertPath: props.issuesSslCertPath,
+      jwtIssuerUri: props.issuesJwtIssuerUri,
+      jwtJwkSetUri: props.issuesJwtJwkSetUri,
+      serverPort: props.issuesServerPort,
+      grpcPort: props.issuesGrpcPort,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    if (database.dbInitTrigger) {
+      issuesService.service.node.addDependency(database.dbInitTrigger);
+    }
+
     // ── Frontend (public ALB) ─────────────────────────────────────────────────
     const frontendService = new FrontendEcsService(this, 'Frontend', {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
+      dockerHubSecret,
       filesApiUrl: props.frontFilesApiUrl,
       usersApiUrl: props.frontUsersApiUrl,
       repositoryApiUrl: props.frontRepositoryApiUrl,
@@ -254,16 +291,6 @@ export class KeycloakStack extends cdk.Stack {
       placeTasksInPublicSubnets: noNat,
     });
 
-    // ── API Gateway → Cloud Map → users service ───────────────────────────────
-    if (usersService.cloudMapService) {
-      new GithubApiGateway(this, 'ApiGateway', {
-        vpc: network.vpc,
-        cloudMapService: usersService.cloudMapService,
-        usersTaskSecurityGroup: usersService.taskSecurityGroup,
-        serverPort: props.usersServerPort,
-        placeVpcLinkInPublicSubnets: noNat,
-      });
-    }
 
     // ── CloudFormation Outputs ────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'ClusterName', {
@@ -300,6 +327,12 @@ export class KeycloakStack extends cdk.Stack {
       value: 'organizations-ms.github.local',
       description: 'DNS name for the organizations microservice (reachable from within the VPC on port 8085)',
       exportName: `${this.stackName}-OrganizationsMsServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'IssuesMsServiceDiscoveryDns', {
+      value: 'issues-ms.github.local',
+      description: 'DNS name for the issues microservice (reachable from within the VPC on port 8091)',
+      exportName: `${this.stackName}-IssuesMsServiceDiscoveryDns`,
     });
 
     new cdk.CfnOutput(this, 'FrontendUrl', {

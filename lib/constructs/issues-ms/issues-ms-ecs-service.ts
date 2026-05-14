@@ -6,7 +6,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
-export interface PullRequestMsEcsServiceProps {
+export interface IssuesMsEcsServiceProps {
   readonly cluster: ecs.Cluster;
   readonly vpc: ec2.IVpc;
   readonly dbSecurityGroup: ec2.SecurityGroup;
@@ -17,20 +17,17 @@ export interface PullRequestMsEcsServiceProps {
   readonly dbName: string;
   readonly dbUsername: string;
   readonly dbPassword: string;
+  /** Path to the RDS SSL bundle inside the container image. */
+  readonly sslCertPath: string;
 
-  // ── JWT / Security ────────────────────────────────────────────────────────
+  // ── JWT ───────────────────────────────────────────────────────────────────
   readonly jwtIssuerUri: string;
-  /** @default true */
-  readonly oauth2Enabled?: boolean;
+  readonly jwtJwkSetUri: string;
 
-  /** Spring active profile (e.g. 'aws', 'dev'). @default 'aws' */
-  readonly springProfilesActive?: string;
-
-  /** Internal URL of the repository microservice (e.g. http://repository-ms.github.local:8090). */
-  readonly repositoryMsUrl: string;
-
-  /** @default 8084 */
+  /** @default 8091 */
   readonly serverPort?: number;
+  /** @default 9091 */
+  readonly grpcPort?: number;
   /** @default 1024 */
   readonly memoryLimitMiB?: number;
   /** @default 512 */
@@ -41,23 +38,19 @@ export interface PullRequestMsEcsServiceProps {
   readonly placeTasksInPublicSubnets?: boolean;
   /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
   readonly dockerHubSecret?: secretsmanager.ISecret;
-  /** @default '/ecs/pullrequest-ms' */
-  readonly logGroupName?: string;
-  /** Cloud Map service name registered under github.local. @default 'pullrequest-ms' */
-  readonly cloudMapName?: string;
 }
 
 /**
- * GitHub pull-request microservice running on Fargate.
+ * GitHub issues microservice running on Fargate.
  * Connects to RDS PostgreSQL.
- * Reachable within the VPC at pullrequest-ms.github.local:8084.
+ * Reachable within the VPC at issues-ms.github.local:8091.
  */
-export class PullRequestMsEcsService extends Construct {
+export class IssuesMsEcsService extends Construct {
   public readonly service: ecs.FargateService;
   public readonly taskSecurityGroup: ec2.SecurityGroup;
   public readonly cloudMapService: servicediscovery.IService | undefined;
 
-  constructor(scope: Construct, id: string, props: PullRequestMsEcsServiceProps) {
+  constructor(scope: Construct, id: string, props: IssuesMsEcsServiceProps) {
     super(scope, id);
 
     const {
@@ -69,42 +62,46 @@ export class PullRequestMsEcsService extends Construct {
       dbName,
       dbUsername,
       dbPassword,
+      sslCertPath,
       jwtIssuerUri,
-      oauth2Enabled = true,
-      springProfilesActive = 'aws',
-      repositoryMsUrl,
-      serverPort = 8084,
+      jwtJwkSetUri,
+      serverPort = 8091,
+      grpcPort = 9091,
       memoryLimitMiB = 1024,
       cpu = 512,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
       dockerHubSecret,
-      logGroupName = '/ecs/pullrequest-ms',
-      cloudMapName = 'pullrequest-ms',
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
     this.taskSecurityGroup = new ec2.SecurityGroup(this, 'TaskSG', {
       vpc,
-      description: 'Security group for github-pullrequest-ms Fargate tasks',
+      description: 'Security group for github-issues-ms Fargate tasks',
       allowAllOutbound: true,
     });
 
     this.taskSecurityGroup.addIngressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(serverPort),
-      'Allow service traffic from VPC',
+      'Allow HTTP traffic from VPC',
+    );
+
+    this.taskSecurityGroup.addIngressRule(
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Port.tcp(grpcPort),
+      'Allow gRPC traffic from VPC',
     );
 
     dbSecurityGroup.addIngressRule(
       this.taskSecurityGroup,
       ec2.Port.tcp(5432),
-      'Allow pullrequest-ms tasks to access the database',
+      'Allow issues-ms tasks to access the database',
     );
 
     // ── CloudWatch log group ──────────────────────────────────────────────────
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
-      logGroupName,
+      logGroupName: '/ecs/issues-ms',
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       retention: logs.RetentionDays.ONE_WEEK,
     });
@@ -115,25 +112,28 @@ export class PullRequestMsEcsService extends Construct {
       cpu,
     });
 
-    taskDefinition.addContainer('pullrequest-ms', {
-      image: ecs.ContainerImage.fromRegistry('savitar47/github-pullrequest-ms:latest', { credentials: dockerHubSecret }),
-      portMappings: [{ containerPort: serverPort, protocol: ecs.Protocol.TCP }],
+    taskDefinition.addContainer('issues-ms', {
+      image: ecs.ContainerImage.fromRegistry('cfulano/github-issues-ms:latest', { credentials: dockerHubSecret }),
+      portMappings: [
+        { containerPort: serverPort, protocol: ecs.Protocol.TCP },
+        { containerPort: grpcPort, protocol: ecs.Protocol.TCP },
+      ],
       environment: {
         SERVER_PORT: String(serverPort),
-        SPRING_PROFILES_ACTIVE: springProfilesActive,
+        GRPC_PORT: String(grpcPort),
         DB_HOST: dbHost,
         DB_PORT: String(dbPort),
         DB_NAME: dbName,
         DB_USERNAME: dbUsername,
         DB_PASSWORD: dbPassword,
+        SSL_CERT_PATH: sslCertPath,
         JWT_ISSUER_URI: jwtIssuerUri,
-        APP_SECURITY_OAUTH2_ENABLED: String(oauth2Enabled),
-        APP_SERVICES_REPOSITORY_MS_URL: repositoryMsUrl,
+        JWT_JWK_SET_URI: jwtJwkSetUri,
         JAVA_TOOL_OPTIONS: '-Xms256m -Xmx512m',
       },
       logging: ecs.LogDriver.awsLogs({
         logGroup,
-        streamPrefix: 'pullrequest-ms',
+        streamPrefix: 'issues-ms',
       }),
     });
 
@@ -148,7 +148,7 @@ export class PullRequestMsEcsService extends Construct {
         : { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       assignPublicIp: placeTasksInPublicSubnets,
       circuitBreaker: { rollback: true },
-      cloudMapOptions: { name: cloudMapName },
+      cloudMapOptions: { name: 'issues-ms' },
     });
 
     this.cloudMapService = this.service.cloudMapService;

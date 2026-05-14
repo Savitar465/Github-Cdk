@@ -86,6 +86,17 @@ export interface EnvironmentConfig {
   readonly orgJwtIssuerUri: string;
   readonly orgJwtJwkSetUri: string;
 
+  // ── Issues microservice ───────────────────────────────────────────────────
+  readonly issuesServerPort: number;
+  readonly issuesGrpcPort: number;
+  readonly issuesDbName: string;
+  readonly issuesDbPort: number;
+  readonly issuesDbUsername: string;
+  readonly issuesDbPassword: string;
+  readonly issuesSslCertPath: string;
+  readonly issuesJwtIssuerUri: string;
+  readonly issuesJwtJwkSetUri: string;
+
   // ── Frontend (Next.js) ────────────────────────────────────────────────────
   readonly frontFilesApiUrl: string;
   readonly frontUsersApiUrl: string;
@@ -108,6 +119,14 @@ export interface EnvironmentConfig {
   readonly filesJwtIssuerUri: string;
   readonly filesOauth2Enabled: boolean;
 
+  // ── Docker Hub authenticated pulls ───────────────────────────────────────
+  /**
+   * Name of an existing Secrets Manager secret containing Docker Hub credentials.
+   * The secret must have `username` and `password` keys.
+   * When omitted, images are pulled anonymously (subject to rate limits).
+   */
+  readonly dockerhubSecretName?: string;
+
   // ── Pull-request microservice ─────────────────────────────────────────────
   readonly prServerPort: number;
   readonly prSpringProfilesActive: string;
@@ -117,6 +136,7 @@ export interface EnvironmentConfig {
   readonly prDbPassword: string;
   readonly prJwtIssuerUri: string;
   readonly prOauth2Enabled: boolean;
+  readonly prRepositoryMsUrl: string;
 
   // ── Users microservice ────────────────────────────────────────────────────
   /** Database name for the users microservice (created inside the shared RDS instance) */
@@ -266,12 +286,21 @@ export function getEnvironmentConfig(): AppConfig {
     orgSslCertPath: getOptionalString('ORG_SSL_CERT_PATH') ?? './global-bundle.pem',
     orgJwtIssuerUri: getRequiredString('ORG_JWT_ISSUER_URI'),
     orgJwtJwkSetUri: getRequiredString('ORG_JWT_JWK_SET_URI'),
+    issuesServerPort: parseNumber('ISSUES_SERVER_PORT', 8091),
+    issuesGrpcPort: parseNumber('ISSUES_GRPC_PORT', 9091),
+    issuesDbName: getOptionalString('ISSUES_DB_NAME') ?? 'github_issues_db',
+    issuesDbPort: parseNumber('ISSUES_DB_PORT', 5432),
+    issuesDbUsername: getOptionalString('ISSUES_DB_USERNAME') ?? 'postgres',
+    issuesDbPassword: getRequiredString('ISSUES_DB_PASSWORD'),
+    issuesSslCertPath: getOptionalString('ISSUES_SSL_CERT_PATH') ?? './global-bundle.pem',
+    issuesJwtIssuerUri: getRequiredString('ISSUES_JWT_ISSUER_URI'),
+    issuesJwtJwkSetUri: getRequiredString('ISSUES_JWT_JWK_SET_URI'),
     frontFilesApiUrl: getOptionalString('NEXT_PUBLIC_FILES_API_URL') ?? 'http://files-ms.github.local:8083/api',
     frontUsersApiUrl: getOptionalString('NEXT_PUBLIC_USERS_API_URL') ?? 'http://users.github.local:8081',
     frontRepositoryApiUrl: getOptionalString('NEXT_PUBLIC_REPOSITORY_API_URL') ?? 'http://repository-ms.github.local:8090',
     frontPrApiUrl: getOptionalString('NEXT_PUBLIC_PR_API_URL') ?? 'http://pullrequest-ms.github.local:8084/api',
     frontOrgApiUrl: getOptionalString('NEXT_PUBLIC_ORG_API_URL') ?? 'http://organization-ms.github.local:8085',
-    frontIssuesApiUrl: getOptionalString('NEXT_PUBLIC_ISSUES_API_URL') ?? 'http://localhost:8091',
+    frontIssuesApiUrl: getOptionalString('NEXT_PUBLIC_ISSUES_API_URL') ?? 'http://issues-ms.github.local:8091',
     frontUseKeycloak: parseBoolean('NEXT_PUBLIC_USE_KEYCLOAK', false),
     frontUseMockAuth: parseBoolean('NEXT_PUBLIC_USE_MOCK_AUTH', false),
     frontGitHttpUrl: getOptionalString('NEXT_PUBLIC_GIT_HTTP_URL') ?? 'http://repository-ms.github.local:8090',
@@ -284,14 +313,16 @@ export function getEnvironmentConfig(): AppConfig {
     filesDbPassword: getRequiredString('FILES_DB_PASSWORD'),
     filesJwtIssuerUri: getRequiredString('FILES_JWT_ISSUER_URI'),
     filesOauth2Enabled: parseBoolean('FILES_APP_SECURITY_OAUTH2_ENABLED', false),
+    dockerhubSecretName: getOptionalString('DOCKERHUB_SECRET_NAME'),
     prServerPort: parseNumber('PR_SERVER_PORT', 8084),
     prSpringProfilesActive: getOptionalString('PR_SPRING_PROFILES_ACTIVE') ?? 'aws',
     prDbName: getOptionalString('PR_DB_NAME') ?? 'githubdb',
     prDbPort: parseNumber('PR_DB_PORT', 5432),
     prDbUsername: getOptionalString('PR_DB_USERNAME') ?? 'postgres',
     prDbPassword: getRequiredString('PR_DB_PASSWORD'),
-    prJwtIssuerUri: getRequiredString('PR_JWT_ISSUER_URI'),
-    prOauth2Enabled: parseBoolean('PR_APP_SECURITY_OAUTH2_ENABLED', false),
+    prJwtIssuerUri: getRequiredString('JWT_ISSUER_URI'),
+    prOauth2Enabled: parseBoolean('APP_SECURITY_OAUTH2_ENABLED', true),
+    prRepositoryMsUrl: getOptionalString('APP_SERVICES_REPOSITORY_MS_URL') ?? 'http://repository-ms.github.local:8090',
     usersDbName: getOptionalString('USERS_DB_NAME') ?? 'ms-users',
     usersServerPort: parseNumber('SERVER_PORT', 8081),
     usersSpringAppName: getOptionalString('SPRING_APPLICATION_NAME') ?? 'users-ms',

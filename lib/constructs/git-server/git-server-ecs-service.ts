@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
@@ -22,6 +23,8 @@ export interface GitServerEcsServiceProps {
   readonly desiredCount?: number;
   /** When true tasks get a public IP (required when there is no NAT gateway). */
   readonly placeTasksInPublicSubnets?: boolean;
+  /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
+  readonly dockerHubSecret?: secretsmanager.ISecret;
 }
 
 /**
@@ -46,6 +49,7 @@ export class GitServerEcsService extends Construct {
       cpu = 512,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
+      dockerHubSecret,
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -75,7 +79,7 @@ export class GitServerEcsService extends Construct {
     });
 
     taskDefinition.addContainer('git-server', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/git-ssh-http-server:latest'),
+      image: ecs.ContainerImage.fromRegistry('cfulano/git-ssh-http-server:latest', { credentials: dockerHubSecret }),
       portMappings: [{ containerPort: httpPort, protocol: ecs.Protocol.TCP }],
       environment: {
         SERVER_MICROSERVICE_URL: microserviceUrl,

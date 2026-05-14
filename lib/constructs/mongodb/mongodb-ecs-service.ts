@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
@@ -16,6 +17,8 @@ export interface MongoDbEcsServiceProps {
   readonly cpu?: number;
   /** When true tasks get a public IP (required when there is no NAT gateway). */
   readonly placeTasksInPublicSubnets?: boolean;
+  /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
+  readonly dockerHubSecret?: secretsmanager.ISecret;
 }
 
 /**
@@ -43,6 +46,7 @@ export class MongoDbEcsService extends Construct {
       memoryLimitMiB = 1024,
       cpu = 512,
       placeTasksInPublicSubnets = false,
+      dockerHubSecret,
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -72,7 +76,7 @@ export class MongoDbEcsService extends Construct {
     });
 
     taskDefinition.addContainer('mongodb', {
-      image: ecs.ContainerImage.fromRegistry('mongo:7'),
+      image: ecs.ContainerImage.fromRegistry('mongo:7', { credentials: dockerHubSecret }),
       portMappings: [{ containerPort: 27017, protocol: ecs.Protocol.TCP }],
       environment: {
         MONGO_INITDB_ROOT_USERNAME: mongodbUsername,

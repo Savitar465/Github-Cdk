@@ -3,6 +3,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
@@ -45,6 +46,8 @@ export interface RepositoryMsEcsServiceProps {
   readonly desiredCount?: number;
   /** When true tasks get a public IP (required when there is no NAT gateway). */
   readonly placeTasksInPublicSubnets?: boolean;
+  /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
+  readonly dockerHubSecret?: secretsmanager.ISecret;
 }
 
 /**
@@ -84,6 +87,7 @@ export class RepositoryMsEcsService extends Construct {
       cpu = 512,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
+      dockerHubSecret,
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -125,7 +129,7 @@ export class RepositoryMsEcsService extends Construct {
     });
 
     taskDefinition.addContainer('repository-ms', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/github-repository-ms:latest'),
+      image: ecs.ContainerImage.fromRegistry('cfulano/github-repository-ms:latest', { credentials: dockerHubSecret }),
       portMappings: [{ containerPort: serverPort, protocol: ecs.Protocol.TCP }],
       environment: {
         SERVER_PORT: String(serverPort),

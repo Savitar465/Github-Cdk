@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
@@ -33,6 +34,8 @@ export interface OrganizationsMsEcsServiceProps {
   readonly desiredCount?: number;
   /** When true tasks get a public IP (required when there is no NAT gateway). */
   readonly placeTasksInPublicSubnets?: boolean;
+  /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
+  readonly dockerHubSecret?: secretsmanager.ISecret;
 }
 
 /**
@@ -65,6 +68,7 @@ export class OrganizationsMsEcsService extends Construct {
       cpu = 512,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
+      dockerHubSecret,
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -100,7 +104,7 @@ export class OrganizationsMsEcsService extends Construct {
     });
 
     taskDefinition.addContainer('organizations-ms', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/github-organizations-ms:latest'),
+      image: ecs.ContainerImage.fromRegistry('cfulano/github-organizations-ms:latest', { credentials: dockerHubSecret }),
       portMappings: [{ containerPort: serverPort, protocol: ecs.Protocol.TCP }],
       environment: {
         SERVER_PORT: String(serverPort),
@@ -131,7 +135,7 @@ export class OrganizationsMsEcsService extends Construct {
         : { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       assignPublicIp: placeTasksInPublicSubnets,
       circuitBreaker: { rollback: true },
-      cloudMapOptions: { name: 'organizations-ms' },
+      cloudMapOptions: { name: 'organization-ms' },
     });
 
     this.cloudMapService = this.service.cloudMapService;

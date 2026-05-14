@@ -1,4 +1,6 @@
 export * from './api-gateway';
+export * from './issues-ms';
+export * from './shared-api-alb';
 export * from './cluster';
 export * from './database';
 export * from './files-ms';
