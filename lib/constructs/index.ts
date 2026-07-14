@@ -13,3 +13,4 @@ export * from './organizations-ms';
 export * from './pullrequest-ms';
 export * from './repository-ms';
 export * from './users';
+export * from './ai-services';

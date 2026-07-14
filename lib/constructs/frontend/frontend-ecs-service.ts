@@ -1,5 +1,8 @@
+import * as path from 'path';
+
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -24,6 +27,10 @@ export interface FrontendEcsServiceProps {
   readonly gitHttpUrl: string;
   readonly gitSshHost: string;
   readonly gitSshPort: number;
+  /** @default internal Cloud Map DNS of issue-classifier-ms */
+  readonly classifierApiUrl?: string;
+  /** @default internal Cloud Map DNS of commit-summarizer-ms */
+  readonly summarizerApiUrl?: string;
   /** Port the container listens on. @default 3000 */
   readonly containerPort?: number;
   /** @default 512 */
@@ -36,6 +43,13 @@ export interface FrontendEcsServiceProps {
   readonly placeTasksInPublicSubnets?: boolean;
   /** Secrets Manager secret with `username`/`password` keys for Docker Hub authenticated pulls. */
   readonly dockerHubSecret?: secretsmanager.ISecret;
+  /**
+   * Path to the frontend source directory to build with Docker.
+   * The NEXT_PUBLIC_* URLs are passed as build args because Next.js bakes
+   * them into the client bundle at build time.
+   * @default '../Github-front' (sibling folder of this CDK repo)
+   */
+  readonly frontendSourcePath?: string;
 }
 
 /**
@@ -67,12 +81,14 @@ export class FrontendEcsService extends Construct {
       gitHttpUrl,
       gitSshHost,
       gitSshPort,
+      classifierApiUrl = 'http://issue-classifier-ms.github.local:8095',
+      summarizerApiUrl = 'http://commit-summarizer-ms.github.local:8096',
       containerPort = 3000,
       memoryLimitMiB = 512,
       cpu = 256,
       desiredCount = 1,
       placeTasksInPublicSubnets = false,
-      dockerHubSecret,
+      frontendSourcePath = path.resolve(process.cwd(), '..', 'Github-front'),
     } = props;
 
     // ── Security group ────────────────────────────────────────────────────────
@@ -108,8 +124,32 @@ export class FrontendEcsService extends Construct {
       cpu,
     });
 
+    // Build args: Next.js inlines NEXT_PUBLIC_* into the browser bundle at
+    // build time, so runtime-only env vars never reach client-side code.
+    const nextPublicBuildArgs: Record<string, string> = {
+      NEXT_PUBLIC_FILES_API_URL: filesApiUrl,
+      NEXT_PUBLIC_USERS_API_URL: usersApiUrl,
+      NEXT_PUBLIC_REPOSITORY_API_URL: repositoryApiUrl,
+      NEXT_PUBLIC_PR_API_URL: prApiUrl,
+      NEXT_PUBLIC_ORG_API_URL: orgApiUrl,
+      NEXT_PUBLIC_ISSUES_API_URL: issuesApiUrl,
+      NEXT_PUBLIC_KEYCLOAK_URL: keycloakUrl,
+      NEXT_PUBLIC_KEYCLOAK_REALM: keycloakRealm,
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: keycloakClientId,
+      NEXT_PUBLIC_USE_KEYCLOAK: String(useKeycloak),
+      NEXT_PUBLIC_USE_MOCK_AUTH: String(useMockAuth),
+      NEXT_PUBLIC_GIT_HTTP_URL: gitHttpUrl,
+      NEXT_PUBLIC_GIT_SSH_HOST: gitSshHost,
+      NEXT_PUBLIC_GIT_SSH_PORT: String(gitSshPort),
+      NEXT_PUBLIC_CLASSIFIER_API_URL: classifierApiUrl,
+      NEXT_PUBLIC_SUMMARIZER_API_URL: summarizerApiUrl,
+    };
+
     taskDefinition.addContainer('frontend', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/github-front:latest', { credentials: dockerHubSecret }),
+      image: ecs.ContainerImage.fromAsset(frontendSourcePath, {
+        buildArgs: nextPublicBuildArgs,
+        platform: Platform.LINUX_AMD64,
+      }),
       portMappings: [{ containerPort, protocol: ecs.Protocol.TCP }],
       environment: {
         NODE_ENV: 'production',

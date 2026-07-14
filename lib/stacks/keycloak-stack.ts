@@ -1,10 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as servicediscovery from 'aws-cdk-lib/aws-servicediscovery';
 import { Construct } from 'constructs';
 
 import { EnvironmentConfig } from '../../config/app-config';
 import {
+  AiEcsService,
   EcsCluster,
   FilesMsEcsService,
   FrontendEcsService,
@@ -17,6 +19,7 @@ import {
   OrganizationsMsEcsService,
   PullRequestMsEcsService,
   RepositoryMsEcsService,
+  SharedApiAlb,
   UsersEcsService,
 } from '../constructs';
 
@@ -269,18 +272,87 @@ export class KeycloakStack extends cdk.Stack {
       issuesService.service.node.addDependency(database.dbInitTrigger);
     }
 
+    // ── Shared API ALB ────────────────────────────────────────────────────────
+    // Public entry point for the APIs the browser calls directly:
+    // organizations, issues, users and pull-requests.
+    const sharedApiAlb = new SharedApiAlb(this, 'SharedApiAlb', {
+      vpc: network.vpc,
+      services: [
+        {
+          name: 'organizations',
+          service: orgService.service,
+          port: props.orgServerPort,
+          taskSecurityGroup: orgService.taskSecurityGroup,
+        },
+        {
+          name: 'issues',
+          service: issuesService.service,
+          port: props.issuesServerPort,
+          taskSecurityGroup: issuesService.taskSecurityGroup,
+        },
+        {
+          name: 'users',
+          service: usersService.service,
+          port: props.usersServerPort,
+          taskSecurityGroup: usersService.taskSecurityGroup,
+        },
+        {
+          name: 'pullrequest',
+          service: pullRequestService.service,
+          port: props.prServerPort,
+          taskSecurityGroup: pullRequestService.taskSecurityGroup,
+          // The PR service runs with servlet context-path /api
+          healthCheckPath: '/api/actuator/health',
+        },
+      ],
+    });
+
+    // Spring Boot takes ~90s to start; without a grace period the ALB marks the
+    // task unhealthy mid-startup and the deployment circuit breaker rolls back.
+    for (const svc of [orgService.service, issuesService.service, usersService.service, pullRequestService.service]) {
+      (svc.node.defaultChild as ecs.CfnService).healthCheckGracePeriodSeconds = 300;
+    }
+
+    // ── Microservicios de IA (internos, sin exposición pública) ──────────────
+    // El frontend los alcanza vía sus rewrites de Next.js dentro de la VPC.
+    new AiEcsService(this, 'IssueClassifierMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      cloudMapName: 'issue-classifier-ms',
+      ecrRepositoryName: 'github/issue-classifier-ms',
+      serverPort: 8095,
+      logGroupName: '/ecs/issue-classifier-ms',
+      jwtIssuerUri: props.orgJwtIssuerUri,
+      jwtJwkSetUri: props.orgJwtJwkSetUri,
+      placeTasksInPublicSubnets: noNat,
+    });
+
+    new AiEcsService(this, 'CommitSummarizerMs', {
+      cluster: ecsCluster.cluster,
+      vpc: network.vpc,
+      cloudMapName: 'commit-summarizer-ms',
+      ecrRepositoryName: 'github/commit-summarizer-ms',
+      serverPort: 8096,
+      logGroupName: '/ecs/commit-summarizer-ms',
+      jwtIssuerUri: props.orgJwtIssuerUri,
+      jwtJwkSetUri: props.orgJwtJwkSetUri,
+      placeTasksInPublicSubnets: noNat,
+    });
+
     // ── Frontend (public ALB) ─────────────────────────────────────────────────
     const frontendService = new FrontendEcsService(this, 'Frontend', {
       cluster: ecsCluster.cluster,
       vpc: network.vpc,
       dockerHubSecret,
+      // Literal URLs from .env: they are baked into the Next.js client bundle
+      // as Docker build args, which cannot carry deploy-time tokens.
       filesApiUrl: props.frontFilesApiUrl,
       usersApiUrl: props.frontUsersApiUrl,
       repositoryApiUrl: props.frontRepositoryApiUrl,
       prApiUrl: props.frontPrApiUrl,
       orgApiUrl: props.frontOrgApiUrl,
       issuesApiUrl: props.frontIssuesApiUrl,
-      keycloakUrl: `http://${keycloakService.loadBalancer.loadBalancerDnsName}`,
+      keycloakUrl: props.keycloakServerUrl,
       keycloakRealm: props.keycloakRealmName,
       keycloakClientId: props.keycloakClientId,
       useKeycloak: props.frontUseKeycloak,
@@ -333,6 +405,12 @@ export class KeycloakStack extends cdk.Stack {
       value: 'issues-ms.github.local',
       description: 'DNS name for the issues microservice (reachable from within the VPC on port 8091)',
       exportName: `${this.stackName}-IssuesMsServiceDiscoveryDns`,
+    });
+
+    new cdk.CfnOutput(this, 'SharedApiAlbDns', {
+      value: sharedApiAlb.loadBalancer.loadBalancerDnsName,
+      description: 'Public DNS of the shared API ALB (organizations :8085, issues :8091)',
+      exportName: `${this.stackName}-SharedApiAlbDns`,
     });
 
     new cdk.CfnOutput(this, 'FrontendUrl', {

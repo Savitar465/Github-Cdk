@@ -1,5 +1,8 @@
+import * as path from 'path';
+
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
@@ -13,7 +16,7 @@ export interface GitServerEcsServiceProps {
   readonly microserviceUrl: string;
   /** Shared bearer token sent by the git-auth script to the microservice. */
   readonly microserviceAuthToken: string;
-  /** @default 9080 */
+  /** @default 80 (the container serves HTTP git on port 80) */
   readonly httpPort?: number;
   /** @default 1024 */
   readonly memoryLimitMiB?: number;
@@ -29,7 +32,7 @@ export interface GitServerEcsServiceProps {
 
 /**
  * Git SSH/HTTP server running on Fargate.
- * Reachable within the VPC at git-server.github.local:9080.
+ * Reachable within the VPC at git-server.github.local:80.
  */
 export class GitServerEcsService extends Construct {
   public readonly service: ecs.FargateService;
@@ -44,7 +47,7 @@ export class GitServerEcsService extends Construct {
       vpc,
       microserviceUrl,
       microserviceAuthToken,
-      httpPort = 9080,
+      httpPort = 80,
       memoryLimitMiB = 1024,
       cpu = 512,
       desiredCount = 1,
@@ -79,11 +82,16 @@ export class GitServerEcsService extends Construct {
     });
 
     taskDefinition.addContainer('git-server', {
-      image: ecs.ContainerImage.fromRegistry('cfulano/git-ssh-http-server:latest', { credentials: dockerHubSecret }),
+      // Derived image (docker/git-server): patches git-admin.cgi so bare repos
+      // are created with HEAD → main instead of master.
+      image: ecs.ContainerImage.fromAsset(path.resolve(process.cwd(), 'docker', 'git-server'), {
+        platform: Platform.LINUX_AMD64,
+      }),
       portMappings: [{ containerPort: httpPort, protocol: ecs.Protocol.TCP }],
       environment: {
-        SERVER_MICROSERVICE_URL: microserviceUrl,
-        SERVER_MICROSERVICE_AUTH_TOKEN: microserviceAuthToken,
+        // Names the container actually reads (it logs "MICROSERVICE_URL is not set" otherwise)
+        MICROSERVICE_URL: microserviceUrl,
+        MICROSERVICE_AUTH_TOKEN: microserviceAuthToken,
       },
       logging: ecs.LogDriver.awsLogs({
         logGroup,
